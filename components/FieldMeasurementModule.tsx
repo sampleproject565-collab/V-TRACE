@@ -1,8 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import * as turf from '@turf/turf';
 import * as Location from 'expo-location';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     ScrollView,
     StyleSheet,
@@ -16,16 +17,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createFieldMeasurement } from '../firebaseHelpers';
 import { useSession } from './SessionContext';
 
+interface GPSPoint {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    timestamp: number;
+}
+
 export default function FieldMeasurementModule() {
     const { session, employee } = useSession();
     const insets = useSafeAreaInsets();
 
     const [customerName, setCustomerName] = useState('');
     const [notes, setNotes] = useState('');
-    const [points, setPoints] = useState<Array<{ latitude: number; longitude: number }>>([]);
+    const [points, setPoints] = useState<GPSPoint[]>([]);
     const [isTracking, setIsTracking] = useState(false);
     const [area, setArea] = useState({ sqMeters: 0, acres: 0, sqFeet: 0 });
     const [isSaving, setIsSaving] = useState(false);
+    const [currentAccuracy, setCurrentAccuracy] = useState<number | null>(null);
+    const [isWaitingForAccuracy, setIsWaitingForAccuracy] = useState(false);
     const [mapRegion, setMapRegion] = useState({
         latitude: 11.0168,
         longitude: 76.9558,
@@ -33,53 +43,139 @@ export default function FieldMeasurementModule() {
         longitudeDelta: 0.005,
     });
 
+    // Monitor GPS accuracy in real-time
+    useEffect(() => {
+        let subscription: Location.LocationSubscription | null = null;
+
+        const startMonitoring = async () => {
+            if (isTracking) {
+                subscription = await Location.watchPositionAsync(
+                    {
+                        accuracy: Location.Accuracy.BestForNavigation,
+                        timeInterval: 1000,
+                        distanceInterval: 0,
+                    },
+                    (location) => {
+                        setCurrentAccuracy(location.coords.accuracy || null);
+                    }
+                );
+            }
+        };
+
+        startMonitoring();
+
+        return () => {
+            if (subscription) {
+                subscription.remove();
+            }
+        };
+    }, [isTracking]);
+
     const startTracking = async () => {
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
-                Alert.alert('Permission Denied', 'Location permission is required.');
+                Alert.alert('Permission Denied', 'Location permission is required for accurate measurements.');
                 return;
             }
 
-            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+            // Request background location for better accuracy
+            const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+            
+            Alert.alert(
+                'GPS Accuracy Tips',
+                '• Stand in an open area\n• Wait for GPS signal to stabilize\n• Avoid buildings and trees\n• Keep phone steady when adding points\n• Best accuracy: < 5 meters',
+                [{ text: 'Got it', onPress: () => initializeTracking() }]
+            );
+        } catch (error) {
+            Alert.alert('Error', 'Could not initialize GPS. Please check permissions.');
+        }
+    };
+
+    const initializeTracking = async () => {
+        try {
+            // Get initial high-accuracy location
+            const location = await Location.getCurrentPositionAsync({ 
+                accuracy: Location.Accuracy.BestForNavigation,
+            });
             
             setMapRegion({
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude,
-                latitudeDelta: 0.005,
-                longitudeDelta: 0.005,
+                latitudeDelta: 0.002, // Zoomed in for better precision
+                longitudeDelta: 0.002,
             });
 
             setPoints([]);
             setArea({ sqMeters: 0, acres: 0, sqFeet: 0 });
             setIsTracking(true);
-            Alert.alert('Tracking Started', 'Walk around the field boundary and tap "Add Point" at each corner.');
+            setCurrentAccuracy(location.coords.accuracy || null);
         } catch (error) {
-            Alert.alert('Error', 'Could not get location. Please check permissions.');
+            Alert.alert('Error', 'Could not get GPS location. Please ensure GPS is enabled.');
         }
     };
 
     const addPoint = async () => {
         if (!isTracking) return;
 
+        setIsWaitingForAccuracy(true);
+
         try {
-            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-            const newPoint = {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
+            // Take multiple readings for better accuracy
+            const readings: Location.LocationObject[] = [];
+            
+            for (let i = 0; i < 5; i++) {
+                const location = await Location.getCurrentPositionAsync({ 
+                    accuracy: Location.Accuracy.BestForNavigation,
+                });
+                readings.push(location);
+                await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms between readings
+            }
+
+            // Filter out readings with poor accuracy (> 10 meters)
+            const goodReadings = readings.filter(r => (r.coords.accuracy || 999) < 10);
+            
+            if (goodReadings.length === 0) {
+                Alert.alert(
+                    'Poor GPS Signal',
+                    'GPS accuracy is too low. Please:\n• Move to an open area\n• Wait for better signal\n• Try again',
+                    [{ text: 'OK' }]
+                );
+                setIsWaitingForAccuracy(false);
+                return;
+            }
+
+            // Calculate average position from good readings
+            const avgLat = goodReadings.reduce((sum, r) => sum + r.coords.latitude, 0) / goodReadings.length;
+            const avgLng = goodReadings.reduce((sum, r) => sum + r.coords.longitude, 0) / goodReadings.length;
+            const avgAccuracy = goodReadings.reduce((sum, r) => sum + (r.coords.accuracy || 0), 0) / goodReadings.length;
+
+            const newPoint: GPSPoint = {
+                latitude: avgLat,
+                longitude: avgLng,
+                accuracy: avgAccuracy,
+                timestamp: Date.now(),
             };
 
             setPoints(prev => [...prev, newPoint]);
             
-            // Update map region to center on new point
+            // Update map to show new point
             setMapRegion({
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
-                latitudeDelta: 0.005,
-                longitudeDelta: 0.005,
+                latitude: avgLat,
+                longitude: avgLng,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002,
             });
+
+            Alert.alert(
+                'Point Added',
+                `Accuracy: ${avgAccuracy.toFixed(1)}m\nPoints: ${points.length + 1}`,
+                [{ text: 'OK' }]
+            );
         } catch (error) {
-            Alert.alert('Error', 'Could not add point.');
+            Alert.alert('Error', 'Could not add point. Please try again.');
+        } finally {
+            setIsWaitingForAccuracy(false);
         }
     };
 
@@ -90,16 +186,19 @@ export default function FieldMeasurementModule() {
         }
 
         try {
-            // Create a polygon using turf
+            // Create a polygon using turf with high precision
             const coordinates = points.map(p => [p.longitude, p.latitude]);
             coordinates.push(coordinates[0]); // Close the polygon
             
             const polygon = turf.polygon([coordinates]);
             const areaSquareMeters = turf.area(polygon);
             
-            // Convert to acres and square feet
+            // Convert to acres and square feet with high precision
             const areaAcres = areaSquareMeters * 0.000247105;
             const areaSquareFeet = areaSquareMeters * 10.7639;
+
+            // Calculate average accuracy
+            const avgAccuracy = points.reduce((sum, p) => sum + p.accuracy, 0) / points.length;
 
             setArea({
                 sqMeters: areaSquareMeters,
@@ -108,9 +207,11 @@ export default function FieldMeasurementModule() {
             });
 
             setIsTracking(false);
+            
             Alert.alert(
                 'Area Calculated',
-                `Area: ${areaAcres.toFixed(2)} Acres\n${areaSquareFeet.toFixed(0)} sq ft\n${areaSquareMeters.toFixed(0)} sq m`
+                `Area: ${areaAcres.toFixed(4)} Acres\n${areaSquareFeet.toFixed(2)} sq ft\n${areaSquareMeters.toFixed(2)} sq m\n\nAvg GPS Accuracy: ${avgAccuracy.toFixed(1)}m\nPoints Used: ${points.length}`,
+                [{ text: 'OK' }]
             );
         } catch (error) {
             console.error('Error calculating area:', error);
@@ -146,15 +247,19 @@ export default function FieldMeasurementModule() {
 
         setIsSaving(true);
         try {
+            // Calculate measurement quality
+            const avgAccuracy = points.reduce((sum, p) => sum + p.accuracy, 0) / points.length;
+            const qualityNote = avgAccuracy < 5 ? 'Excellent' : avgAccuracy < 10 ? 'Good' : 'Fair';
+
             await createFieldMeasurement({
                 employeeId: employee.employeeId,
                 sessionId: session.sessionId,
                 customerName: customerName.trim(),
-                points: points,
+                points: points.map(p => ({ latitude: p.latitude, longitude: p.longitude })),
                 areaSquareMeters: parseFloat(area.sqMeters.toFixed(2)),
                 areaAcres: parseFloat(area.acres.toFixed(4)),
                 areaSquareFeet: parseFloat(area.sqFeet.toFixed(2)),
-                notes: notes.trim(),
+                notes: `${notes.trim()}\n\nMeasurement Quality: ${qualityNote} (Avg Accuracy: ${avgAccuracy.toFixed(1)}m, ${points.length} points)`,
             });
 
             Alert.alert('Success', 'Field measurement saved successfully!');
@@ -172,6 +277,20 @@ export default function FieldMeasurementModule() {
         }
     };
 
+    const getAccuracyColor = (accuracy: number | null) => {
+        if (!accuracy) return '#999';
+        if (accuracy < 5) return '#4CAF50'; // Excellent
+        if (accuracy < 10) return '#FFC107'; // Good
+        return '#f44336'; // Poor
+    };
+
+    const getAccuracyLabel = (accuracy: number | null) => {
+        if (!accuracy) return 'Waiting...';
+        if (accuracy < 5) return 'Excellent';
+        if (accuracy < 10) return 'Good';
+        return 'Poor';
+    };
+
     return (
         <ScrollView
             style={styles.container}
@@ -182,9 +301,23 @@ export default function FieldMeasurementModule() {
         >
             <View style={styles.header}>
                 <MaterialIcons name="square-foot" size={40} color="#00BCD4" />
-                <Text style={styles.title}>Field Area Measurement</Text>
+                <Text style={styles.title}>Field Measurement</Text>
             </View>
-            <Text style={styles.subtitle}>Measure farm land using GPS polygon</Text>
+            <Text style={styles.subtitle}>High-precision GPS polygon measurement</Text>
+
+            {/* GPS Accuracy Indicator */}
+            {isTracking && (
+                <View style={[styles.accuracyCard, { borderColor: getAccuracyColor(currentAccuracy) }]}>
+                    <MaterialIcons name="gps-fixed" size={24} color={getAccuracyColor(currentAccuracy)} />
+                    <View style={styles.accuracyInfo}>
+                        <Text style={styles.accuracyLabel}>GPS Accuracy</Text>
+                        <Text style={[styles.accuracyValue, { color: getAccuracyColor(currentAccuracy) }]}>
+                            {currentAccuracy ? `±${currentAccuracy.toFixed(1)}m` : 'Acquiring...'}
+                        </Text>
+                        <Text style={styles.accuracyStatus}>{getAccuracyLabel(currentAccuracy)}</Text>
+                    </View>
+                </View>
+            )}
 
             {/* Map View */}
             <View style={styles.mapContainer}>
@@ -193,17 +326,20 @@ export default function FieldMeasurementModule() {
                     region={mapRegion}
                     showsUserLocation
                     showsMyLocationButton
+                    mapType="hybrid"
                 >
                     {points.map((point, index) => (
                         <Marker
                             key={index}
-                            coordinate={point}
+                            coordinate={{ latitude: point.latitude, longitude: point.longitude }}
                             title={`Point ${index + 1}`}
+                            description={`Accuracy: ±${point.accuracy.toFixed(1)}m`}
+                            pinColor={point.accuracy < 5 ? '#4CAF50' : point.accuracy < 10 ? '#FFC107' : '#f44336'}
                         />
                     ))}
                     {points.length >= 3 && (
                         <Polygon
-                            coordinates={points}
+                            coordinates={points.map(p => ({ latitude: p.latitude, longitude: p.longitude }))}
                             strokeColor="#00BCD4"
                             fillColor="rgba(0, 188, 212, 0.3)"
                             strokeWidth={3}
@@ -217,17 +353,23 @@ export default function FieldMeasurementModule() {
                 {!isTracking && points.length === 0 ? (
                     <TouchableOpacity style={styles.startButton} onPress={startTracking}>
                         <MaterialIcons name="play-arrow" size={28} color="#fff" />
-                        <Text style={styles.startButtonText}>Start Field Measurement</Text>
+                        <Text style={styles.startButtonText}>Start Measurement</Text>
                     </TouchableOpacity>
                 ) : (
                     <View style={styles.trackingControls}>
                         <TouchableOpacity
-                            style={[styles.controlButton, styles.addButton]}
+                            style={[styles.controlButton, styles.addButton, isWaitingForAccuracy && styles.disabledButton]}
                             onPress={addPoint}
-                            disabled={!isTracking}
+                            disabled={!isTracking || isWaitingForAccuracy}
                         >
-                            <MaterialIcons name="add-location" size={24} color="#fff" />
-                            <Text style={styles.controlButtonText}>Add Point ({points.length})</Text>
+                            {isWaitingForAccuracy ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <MaterialIcons name="add-location" size={24} color="#fff" />
+                            )}
+                            <Text style={styles.controlButtonText}>
+                                {isWaitingForAccuracy ? 'Reading...' : `Add Point (${points.length})`}
+                            </Text>
                         </TouchableOpacity>
                         
                         {points.length >= 3 && (
@@ -256,15 +398,15 @@ export default function FieldMeasurementModule() {
                     <Text style={styles.areaTitle}>Measured Area</Text>
                     <View style={styles.areaValues}>
                         <View style={styles.areaItem}>
-                            <Text style={styles.areaValue}>{area.acres.toFixed(2)}</Text>
+                            <Text style={styles.areaValue}>{area.acres.toFixed(4)}</Text>
                             <Text style={styles.areaUnit}>Acres</Text>
                         </View>
                         <View style={styles.areaItem}>
-                            <Text style={styles.areaValue}>{area.sqFeet.toFixed(0)}</Text>
+                            <Text style={styles.areaValue}>{area.sqFeet.toFixed(2)}</Text>
                             <Text style={styles.areaUnit}>sq ft</Text>
                         </View>
                         <View style={styles.areaItem}>
-                            <Text style={styles.areaValue}>{area.sqMeters.toFixed(0)}</Text>
+                            <Text style={styles.areaValue}>{area.sqMeters.toFixed(2)}</Text>
                             <Text style={styles.areaUnit}>sq m</Text>
                         </View>
                     </View>
@@ -336,6 +478,33 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         marginBottom: 15,
+    },
+    accuracyCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f5f5f5',
+        borderRadius: 15,
+        padding: 15,
+        marginBottom: 15,
+        borderWidth: 2,
+        gap: 12,
+    },
+    accuracyInfo: {
+        flex: 1,
+    },
+    accuracyLabel: {
+        fontSize: 12,
+        color: '#666',
+    },
+    accuracyValue: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginTop: 2,
+    },
+    accuracyStatus: {
+        fontSize: 12,
+        color: '#999',
+        marginTop: 2,
     },
     mapContainer: {
         height: 300,
