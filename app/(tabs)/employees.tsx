@@ -13,10 +13,11 @@ import CRMModule from '../../components/CRMModule';
 import CropDiseaseModule from '../../components/CropDiseaseModule';
 import FieldMeasurementModule from '../../components/FieldMeasurementModule';
 import { useSession } from '../../components/SessionContext';
+import TasksModule from '../../components/TasksModule';
 import TravelExpenseModule from '../../components/TravelExpenseModule';
 import VisitModule from '../../components/VisitModule';
 
-type ModuleType = 'visit' | 'expense' | 'crm' | 'crop' | 'measure' | null;
+type ModuleType = 'visit' | 'expense' | 'crm' | 'crop' | 'measure' | 'tasks' | null;
 
 export default function EmployeesScreen() {
     const { employee } = useSession();
@@ -24,6 +25,13 @@ export default function EmployeesScreen() {
     const [activeModule, setActiveModule] = useState<ModuleType>(null);
 
     const modules = [
+        { 
+            id: 'tasks', 
+            name: 'My Tasks', 
+            icon: 'assignment',
+            description: 'View and manage daily tasks from admin',
+            color: '#2196F3',
+        },
         { 
             id: 'visit', 
             name: 'Visit', 
@@ -63,6 +71,8 @@ export default function EmployeesScreen() {
 
     const renderModuleContent = () => {
         switch (activeModule) {
+            case 'tasks':
+                return <TasksModule />;
             case 'visit':
                 return <VisitModule />;
             case 'expense':

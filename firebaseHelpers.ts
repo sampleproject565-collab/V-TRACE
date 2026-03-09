@@ -325,3 +325,91 @@ export const getFieldMeasurementsByEmployee = async (employeeId: string) => {
   
   return measurements;
 };
+
+// Task Management helpers
+export const getTasksByEmployee = async (employeeId: string) => {
+  const tasksRef = ref(db, 'tasks');
+  const snapshot = await get(tasksRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const tasks: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.assignedTo === employeeId) {
+      tasks.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  // Sort by date (newest first)
+  return tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+export const updateTaskStatus = async (taskId: string, status: 'accepted' | 'rejected' | 'completed' | 'not_completed', reason?: string) => {
+  const taskRef = ref(db, `tasks/${taskId}`);
+  
+  const updates: any = {
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  
+  if (status === 'accepted') {
+    updates.acceptedAt = new Date().toISOString();
+  } else if (status === 'rejected') {
+    updates.rejectedAt = new Date().toISOString();
+    updates.rejectionReason = reason || '';
+  } else if (status === 'completed') {
+    updates.completedAt = new Date().toISOString();
+  } else if (status === 'not_completed') {
+    updates.notCompletedAt = new Date().toISOString();
+    updates.notCompletedReason = reason || '';
+  }
+  
+  await update(taskRef, updates);
+};
+
+export const getTodayTasks = async (employeeId: string) => {
+  const tasksRef = ref(db, 'tasks');
+  const snapshot = await get(tasksRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const tasks: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    const taskDate = new Date(data.dueDate || data.createdAt);
+    taskDate.setHours(0, 0, 0, 0);
+    
+    if (data.assignedTo === employeeId && taskDate.getTime() === today.getTime()) {
+      tasks.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  return tasks;
+};
+
+export const getPendingTasksCount = async (employeeId: string) => {
+  const tasksRef = ref(db, 'tasks');
+  const snapshot = await get(tasksRef);
+  
+  if (!snapshot.exists()) return 0;
+  
+  let count = 0;
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.assignedTo === employeeId && data.status === 'pending') {
+      count++;
+    }
+  });
+  
+  return count;
+};
