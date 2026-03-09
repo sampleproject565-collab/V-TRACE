@@ -1,0 +1,748 @@
+================================================================================
+                        V TRACE - PROJECT DOCUMENTATION
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+Name: V Trace
+Version: 1.0.0
+Type: React Native Mobile Application (Expo)
+Platform: iOS, Android, Web
+Package: com.anonymous.punchlocationapp
+
+DESCRIPTION
+V Trace is a comprehensive employee work session tracking and CRM application
+that enables real-time location monitoring, work time management, and customer
+visit logging. The app provides Start-to-Close (S2C) session management with
+background location tracking, break management, and a visual map interface for
+CRM lead tracking.
+
+================================================================================
+CORE FEATURES
+================================================================================
+
+1. AUTHENTICATION SYSTEM
+   - Employee login with ID and password
+   - Employee registration with validation
+   - Secure session management using AsyncStorage
+   - Firebase Firestore backend for user data
+
+2. SESSION MANAGEMENT (S2C - Start-to-Close)
+   - Start work day with photo capture and location
+   - Three work types: OFFICE, FIELD, FARM
+   - Pause/Resume functionality for breaks
+   - Close work day with photo and location
+   - Automatic time tracking (work time and break time)
+   - Session state persistence across app restarts
+
+3. LOCATION TRACKING
+   - Background location tracking every 2 minutes during active sessions
+   - High accuracy GPS with fallback to balanced mode
+   - Location history stored in Firebase
+   - Real-time location count display
+   - Automatic tracking pause during breaks
+
+4. CAMERA INTEGRATION
+   - Front-facing camera capture for session start/close
+   - Photo URI storage with session data
+   - Custom camera component with preview
+
+5. CRM & LEADS MANAGEMENT
+   - Customer visit logging with location
+   - Visit purpose and notes tracking
+   - Interactive map view of all logged visits
+   - Geo-referenced lead database
+   - Visual markers for each customer location
+
+6. NOTIFICATIONS
+   - Daily reminders to start work (9:00 AM)
+   - Daily reminders to close work (6:00 PM)
+   - Break time reminders (15 minutes after pause)
+   - Push notification permissions handling
+
+7. DASHBOARD
+   - Real-time session status display
+   - Work time tracking
+   - Location update counter
+   - Quick access to all features
+   - Employee information display
+
+================================================================================
+TECHNOLOGY STACK
+================================================================================
+
+FRAMEWORK & RUNTIME
+- React: 19.1.0
+- React Native: 0.81.5
+- Expo SDK: ~54.0.33
+- TypeScript: ~5.9.2
+- Node.js (via Expo)
+
+NAVIGATION & ROUTING
+- Expo Router: ~6.0.23 (File-based routing)
+- React Navigation Native: ^7.1.8
+- React Navigation Bottom Tabs: ^7.4.0
+
+STATE MANAGEMENT
+- React Context API (SessionContext)
+- AsyncStorage for persistence
+
+BACKEND & DATABASE
+- Firebase: ^12.9.0
+- Firestore (Cloud Database)
+- Collections: employees, sessions, locations, visits
+
+LOCATION & MAPS
+- expo-location: ~19.0.8
+- expo-task-manager: ~14.0.9
+- react-native-maps: 1.20.1
+
+CAMERA & MEDIA
+- expo-camera: ~17.0.10
+- expo-image: ~3.0.11
+- react-native-view-shot: 4.0.3
+
+UI & STYLING
+- React Native built-in components
+- @expo/vector-icons (MaterialIcons): ^15.0.3
+- expo-linear-gradient: ~15.0.8
+- expo-blur: ~15.0.8
+- react-native-safe-area-context: ~5.6.0
+
+NOTIFICATIONS
+- expo-notifications: ~0.32.16
+
+ANIMATIONS
+- react-native-reanimated: ~4.1.1
+- react-native-worklets: 0.5.1
+- Animated API (React Native)
+
+OTHER EXPO MODULES
+- expo-haptics: ~15.0.8
+- expo-splash-screen: ~31.0.13
+- expo-status-bar: ~3.0.9
+- expo-constants: ~18.0.13
+- expo-linking: ~8.0.11
+- expo-system-ui: ~6.0.9
+- expo-web-browser: ~15.0.10
+
+DEVELOPMENT TOOLS
+- ESLint: ^9.25.0
+- expo-dev-client: ~6.0.20
+- TypeScript types for React: ~19.1.0
+
+================================================================================
+PROJECT STRUCTURE
+================================================================================
+
+v-trace/
+│
+├── app/                          # Main application code (Expo Router)
+│   ├── (tabs)/                   # Tab-based navigation screens
+│   │   ├── _layout.tsx           # Tab navigator configuration
+│   │   ├── index.tsx             # Home/Dashboard screen
+│   │   ├── session.tsx           # S2C Session management screen
+│   │   ├── map.tsx               # CRM Leads map view
+│   │   ├── visit.tsx             # Customer visit logging
+│   │   └── calendar.tsx          # Calendar view (if implemented)
+│   │
+│   ├── _layout.tsx               # Root layout with providers
+│   ├── auth.tsx                  # Authentication screen
+│   └── modal.tsx                 # Modal screen
+│
+├── components/                   # Reusable components
+│   ├── ui/                       # UI-specific components
+│   ├── CameraCapture.tsx         # Camera component for photo capture
+│   ├── SessionContext.tsx        # Global session state management
+│   ├── themed-text.tsx           # Themed text component
+│   ├── themed-view.tsx           # Themed view component
+│   ├── external-link.tsx         # External link handler
+│   ├── haptic-tab.tsx            # Tab with haptic feedback
+│   ├── hello-wave.tsx            # Animated wave component
+│   └── parallax-scroll-view.tsx  # Parallax scrolling component
+│
+├── constants/                    # App constants
+│   └── theme.ts                  # Theme configuration
+│
+├── hooks/                        # Custom React hooks
+│   └── use-color-scheme.ts       # Color scheme hook
+│
+├── assets/                       # Static assets
+│   └── images/                   # App icons and images
+│
+├── .expo/                        # Expo configuration and cache
+│
+├── firebase.ts                   # Firebase configuration
+├── app.json                      # Expo app configuration
+├── package.json                  # Dependencies and scripts
+├── tsconfig.json                 # TypeScript configuration
+└── README.md                     # Project readme
+
+================================================================================
+FIREBASE DATABASE SCHEMA
+================================================================================
+
+COLLECTION: employees
+Document Structure:
+{
+  employeeId: string          // Unique employee identifier
+  password: string            // Plain text password (should be hashed)
+  name: string                // Employee full name
+  registeredAt: Timestamp     // Registration date
+}
+
+COLLECTION: sessions
+Document Structure:
+{
+  employeeId: string          // Reference to employee
+  workType: string            // "OFFICE" | "FIELD" | "FARM"
+  startTime: Timestamp        // Session start time
+  endTime: Timestamp          // Session end time (when closed)
+  startLocation: {            // GPS coordinates at start
+    latitude: number
+    longitude: number
+  }
+  endLocation: {              // GPS coordinates at close
+    latitude: number
+    longitude: number
+  }
+  startPhotoUri: string       // Photo URI at session start
+  endPhotoUri: string         // Photo URI at session close
+  status: string              // "ACTIVE" | "PAUSED" | "CLOSED"
+  breakStartTime: Timestamp   // When break started (if paused)
+  totalWorkTimeMs: number     // Total work time in milliseconds
+  totalBreakTimeMs: number    // Total break time in milliseconds
+}
+
+COLLECTION: locations
+Document Structure:
+{
+  employeeId: string          // Reference to employee
+  sessionId: string           // Reference to session
+  latitude: number            // GPS latitude
+  longitude: number           // GPS longitude
+  timestamp: Timestamp        // When location was recorded
+}
+
+COLLECTION: visits
+Document Structure:
+{
+  employeeId: string          // Reference to employee
+  customerName: string        // Customer/Lead name
+  purpose: string             // Visit purpose
+  notes: string               // Additional notes
+  location: {                 // Visit location
+    latitude: number
+    longitude: number
+  }
+  timestamp: Timestamp        // Visit date/time
+  photoUri: string            // Photo from visit (if captured)
+}
+
+================================================================================
+KEY WORKFLOWS
+================================================================================
+
+1. USER AUTHENTICATION FLOW
+   a. User opens app
+   b. SessionProvider checks AsyncStorage for saved employee data
+   c. If not found, redirect to /auth screen
+   d. User enters credentials or registers
+   e. Firebase Firestore validates/creates employee record
+   f. Employee data saved to AsyncStorage
+   g. Redirect to /(tabs) dashboard
+
+2. START WORK SESSION FLOW
+   a. User navigates to Session tab
+   b. Selects work type (OFFICE/FIELD/FARM)
+   c. Taps "Start Day"
+   d. Camera opens for front-facing photo
+   e. Photo captured and location obtained
+   f. New session document created in Firebase
+   g. Session state saved to AsyncStorage
+   h. Background location tracking starts (every 2 minutes)
+   i. Daily notification reminders scheduled
+
+3. PAUSE/RESUME BREAK FLOW
+   a. User taps "Take Break" during active session
+   b. Session status updated to "PAUSED" in Firebase
+   c. Break start time recorded
+   d. Location tracking stops
+   e. 15-minute break reminder notification scheduled
+   f. User taps "Resume Work"
+   g. Break duration calculated and added to totalBreakTimeMs
+   h. Session status updated to "ACTIVE"
+   i. Location tracking resumes
+
+4. CLOSE WORK SESSION FLOW
+   a. User taps "Close Day"
+   b. Confirmation alert displayed
+   c. Camera opens for end-of-day photo
+   d. Photo captured and location obtained
+   e. Final work time and break time calculated
+   f. Session document updated with end data and status "CLOSED"
+   g. Session state cleared from AsyncStorage
+   h. Location tracking stops
+   i. Break reminder notification cancelled
+
+5. LOCATION TRACKING FLOW
+   a. Session is active and not paused
+   b. Every 2 minutes, getCurrentPositionAsync called
+   c. Location coordinates obtained (High accuracy, fallback to Balanced)
+   d. New location document created in Firebase
+   e. Location count incremented in UI
+   f. Current location state updated for map display
+
+6. CUSTOMER VISIT LOGGING FLOW
+   a. User navigates to Visit tab
+   b. Fills in customer name, purpose, notes
+   c. Taps capture button
+   d. Camera opens for photo
+   e. Current location obtained
+   f. Visit document created in Firebase with all data
+   g. Success confirmation displayed
+   h. Visit appears on Leads Map
+
+7. LEADS MAP DISPLAY FLOW
+   a. User navigates to Map tab
+   b. Location permission requested
+   c. Current location obtained
+   d. All visits for employee fetched from Firebase
+   e. Map initialized with user location
+   f. Markers placed for each visit location
+   g. Tapping marker shows callout with visit details
+
+================================================================================
+PERMISSIONS REQUIRED
+================================================================================
+
+ANDROID PERMISSIONS (app.json)
+- android.permission.ACCESS_COARSE_LOCATION
+- android.permission.ACCESS_FINE_LOCATION
+- android.permission.ACCESS_BACKGROUND_LOCATION
+- android.permission.FOREGROUND_SERVICE
+- android.permission.FOREGROUND_SERVICE_LOCATION
+- Camera access (via expo-camera)
+- Notification permissions (via expo-notifications)
+
+IOS PERMISSIONS
+- Location When In Use
+- Location Always (for background tracking)
+- Camera access
+- Notification permissions
+
+================================================================================
+CONFIGURATION FILES
+================================================================================
+
+APP.JSON HIGHLIGHTS
+- App Name: "V Trace"
+- Slug: "v-trace"
+- Scheme: "vtrace"
+- New Architecture: Enabled
+- React Compiler: Enabled (experimental)
+- Typed Routes: Enabled
+- Edge-to-Edge: Enabled (Android)
+- Adaptive Icons: Configured for Android
+- Splash Screen: Custom with light/dark mode support
+
+TSCONFIG.JSON
+- Extends: expo/tsconfig.base
+- Strict Mode: Enabled
+- Path Aliases: @/* maps to ./*
+
+FIREBASE CONFIG
+- Project: test-aab61
+- Region: Default (US)
+- Database: Firestore
+- Authentication: Not used (custom implementation)
+
+================================================================================
+SCRIPTS & COMMANDS
+================================================================================
+
+npm start              # Start Expo development server
+npm run android        # Run on Android emulator/device
+npm run ios            # Run on iOS simulator/device
+npm run web            # Run in web browser
+npm run lint           # Run ESLint
+npm run reset-project  # Reset to blank project
+
+================================================================================
+STYLING & DESIGN SYSTEM
+================================================================================
+
+COLOR PALETTE
+- Primary: #fbb115 (Golden Yellow)
+- Success: #4ade80 (Green)
+- Error: #ef4444 (Red)
+- Background: #ffffff (White)
+- Secondary Background: #f5f5f5 (Light Gray)
+- Border: #e5e5e5 (Gray)
+- Text Primary: #000000 (Black)
+- Text Secondary: #666666 (Dark Gray)
+- Text Tertiary: #999999 (Medium Gray)
+- Warning Background: #fff5e6 (Light Orange)
+- Success Background: #e6ffe6 (Light Green)
+
+DESIGN PATTERNS
+- Rounded corners: 15-30px border radius
+- Elevation/Shadows: Used for cards and buttons
+- Icon-first design with MaterialIcons
+- Consistent padding: 15-25px
+- Card-based layouts
+- Bottom tab navigation
+- Modal presentations for camera
+
+TYPOGRAPHY
+- Title: 32-36px, bold
+- Subtitle: 16px, regular
+- Body: 14-16px
+- Button Text: 18-20px, bold
+- Labels: 12-14px
+
+================================================================================
+STATE MANAGEMENT ARCHITECTURE
+================================================================================
+
+SESSION CONTEXT (Global State)
+Provides:
+- employee: Current logged-in employee data
+- session: Current work session state
+- login(): Authenticate and save employee
+- logout(): Clear session and employee data
+- startSession(): Begin work day
+- pauseSession(): Start break
+- resumeSession(): End break
+- closeSession(): End work day
+- currentLocation: Latest GPS coordinates
+- locationCount: Number of location updates
+
+Session State Structure:
+{
+  sessionId: string | null
+  isActive: boolean
+  isPaused: boolean
+  workType: "OFFICE" | "FIELD" | "FARM" | null
+  startTime: Date | null
+  breakStartTime: Date | null
+  totalWorkTimeMs: number
+  totalBreakTimeMs: number
+}
+
+PERSISTENCE STRATEGY
+- AsyncStorage keys:
+  - vtrace_employee: Serialized employee object
+  - vtrace_session: Serialized session state
+- Hydration on app launch
+- Automatic sync on state changes
+- Cleared on logout
+
+================================================================================
+SECURITY CONSIDERATIONS
+================================================================================
+
+CURRENT IMPLEMENTATION
+- Passwords stored in plain text (NOT RECOMMENDED FOR PRODUCTION)
+- No encryption for stored data
+- Firebase credentials exposed in source code
+- No API authentication layer
+- No rate limiting
+
+RECOMMENDED IMPROVEMENTS FOR PRODUCTION
+1. Implement Firebase Authentication
+2. Hash passwords using bcrypt or similar
+3. Move Firebase config to environment variables
+4. Implement proper session tokens
+5. Add API rate limiting
+6. Encrypt sensitive data in AsyncStorage
+7. Implement certificate pinning
+8. Add biometric authentication option
+9. Implement proper RBAC (Role-Based Access Control)
+10. Add audit logging for sensitive operations
+
+================================================================================
+PERFORMANCE OPTIMIZATIONS
+================================================================================
+
+IMPLEMENTED
+- Location tracking interval: 2 minutes (reduces battery drain)
+- Fallback from High to Balanced accuracy for location
+- AsyncStorage for offline-first experience
+- Lazy loading of map markers
+- Conditional rendering based on session state
+
+POTENTIAL IMPROVEMENTS
+- Implement React.memo for expensive components
+- Use FlatList for large lists instead of ScrollView
+- Optimize image sizes and use caching
+- Implement pagination for location history
+- Use React Query for Firebase data fetching
+- Implement background task optimization
+- Add loading skeletons for better UX
+
+================================================================================
+TESTING STRATEGY
+================================================================================
+
+RECOMMENDED TESTING APPROACH
+1. Unit Tests
+   - SessionContext logic
+   - Time calculation functions
+   - Location utilities
+   - Firebase query functions
+
+2. Integration Tests
+   - Authentication flow
+   - Session lifecycle
+   - Location tracking
+   - Firebase operations
+
+3. E2E Tests
+   - Complete user workflows
+   - Camera integration
+   - Map interactions
+   - Notification handling
+
+4. Manual Testing Checklist
+   - Test on physical devices (iOS & Android)
+   - Test background location tracking
+   - Test app state restoration
+   - Test notification delivery
+   - Test offline scenarios
+   - Test permission denials
+   - Test low battery scenarios
+
+================================================================================
+DEPLOYMENT INFORMATION
+================================================================================
+
+EAS PROJECT ID
+3e9707f9-4c6b-4977-8bbe-12f934982f18
+
+BUILD PROFILES (Recommended)
+- Development: expo-dev-client enabled
+- Preview: Internal testing builds
+- Production: Store-ready builds
+
+DEPLOYMENT STEPS
+1. Configure app.json with proper bundle identifiers
+2. Set up EAS Build credentials
+3. Create production Firebase project
+4. Update Firebase config with production credentials
+5. Build using: eas build --platform all
+6. Submit to stores: eas submit
+
+STORE REQUIREMENTS
+- Privacy Policy (required for location tracking)
+- Terms of Service
+- App Store screenshots
+- Play Store feature graphic
+- Detailed permission explanations
+
+================================================================================
+KNOWN LIMITATIONS & FUTURE ENHANCEMENTS
+================================================================================
+
+CURRENT LIMITATIONS
+- No offline mode for Firebase operations
+- Limited error handling and retry logic
+- No data export functionality
+- No admin dashboard
+- No team management features
+- No reporting/analytics
+- Calendar view not fully implemented
+- No geofencing capabilities
+
+FUTURE ENHANCEMENT IDEAS
+1. Admin web dashboard for managers
+2. Team management and hierarchy
+3. Advanced reporting and analytics
+4. Export data to CSV/PDF
+5. Geofencing for automatic clock-in/out
+6. Integration with payroll systems
+7. Shift scheduling
+8. Leave management
+9. Expense tracking
+10. Document management
+11. Chat/messaging between employees
+12. Task assignment and tracking
+13. Performance metrics
+14. Biometric authentication
+15. Offline mode with sync
+16. Multi-language support
+17. Dark mode improvements
+18. Widget support
+19. Apple Watch / Wear OS companion apps
+20. Voice commands integration
+
+================================================================================
+TROUBLESHOOTING GUIDE
+================================================================================
+
+COMMON ISSUES
+
+1. Location Not Updating
+   - Check location permissions granted
+   - Verify GPS is enabled on device
+   - Check Firebase connection
+   - Ensure session is active and not paused
+
+2. Camera Not Opening
+   - Verify camera permissions
+   - Check if another app is using camera
+   - Restart app
+
+3. Login Fails
+   - Check Firebase connection
+   - Verify credentials are correct
+   - Check Firestore security rules
+
+4. App Crashes on Startup
+   - Clear AsyncStorage
+   - Reinstall app
+   - Check Expo version compatibility
+
+5. Notifications Not Appearing
+   - Check notification permissions
+   - Verify notification settings on device
+   - Check if Do Not Disturb is enabled
+
+6. Background Tracking Stops
+   - Check battery optimization settings
+   - Verify background location permission
+   - Ensure app is not force-closed
+
+================================================================================
+DEVELOPMENT SETUP
+================================================================================
+
+PREREQUISITES
+- Node.js (v18 or higher)
+- npm or yarn
+- Expo CLI
+- iOS Simulator (Mac only) or Android Emulator
+- Physical device for testing (recommended)
+
+INSTALLATION STEPS
+1. Clone repository
+2. Run: npm install
+3. Configure Firebase project
+4. Update firebase.ts with your credentials
+5. Run: npx expo start
+6. Scan QR code with Expo Go or run on emulator
+
+ENVIRONMENT SETUP
+- Install Expo Go app on physical device
+- Set up Android Studio for Android development
+- Set up Xcode for iOS development (Mac only)
+- Configure EAS CLI for builds: npm install -g eas-cli
+
+================================================================================
+API DOCUMENTATION
+================================================================================
+
+FIREBASE COLLECTIONS
+
+GET /employees
+Query: where("employeeId", "==", employeeId)
+Returns: Employee document
+
+POST /employees
+Body: { employeeId, password, name, registeredAt }
+Returns: Document ID
+
+POST /sessions
+Body: { employeeId, workType, startTime, startLocation, startPhotoUri, status }
+Returns: Document ID
+
+UPDATE /sessions/{sessionId}
+Body: { status, endTime, endLocation, endPhotoUri, totalWorkTimeMs, totalBreakTimeMs }
+Returns: Success
+
+POST /locations
+Body: { employeeId, sessionId, latitude, longitude, timestamp }
+Returns: Document ID
+
+GET /visits
+Query: where("employeeId", "==", employeeId)
+Returns: Array of visit documents
+
+POST /visits
+Body: { employeeId, customerName, purpose, notes, location, timestamp, photoUri }
+Returns: Document ID
+
+================================================================================
+CONTRIBUTING GUIDELINES
+================================================================================
+
+CODE STYLE
+- Use TypeScript for all new files
+- Follow React Native best practices
+- Use functional components with hooks
+- Implement proper error handling
+- Add comments for complex logic
+- Use meaningful variable names
+
+COMMIT MESSAGES
+- Use conventional commits format
+- Examples:
+  - feat: Add calendar view
+  - fix: Resolve location tracking issue
+  - docs: Update README
+  - refactor: Improve session management
+
+PULL REQUEST PROCESS
+1. Create feature branch from main
+2. Implement changes with tests
+3. Update documentation
+4. Submit PR with detailed description
+5. Address review comments
+6. Merge after approval
+
+================================================================================
+LICENSE & CREDITS
+================================================================================
+
+LICENSE
+Private/Proprietary (Update as needed)
+
+THIRD-PARTY LIBRARIES
+- React Native & Expo: MIT License
+- Firebase: Apache License 2.0
+- React Navigation: MIT License
+- Material Icons: Apache License 2.0
+
+CREDITS
+- Developed using Expo framework
+- Icons by Material Design
+- Maps by React Native Maps
+
+================================================================================
+CONTACT & SUPPORT
+================================================================================
+
+For technical support or questions:
+- Check documentation first
+- Review troubleshooting guide
+- Contact development team
+
+================================================================================
+VERSION HISTORY
+================================================================================
+
+v1.0.0 (Current)
+- Initial release
+- Core S2C session management
+- Location tracking
+- CRM leads mapping
+- Authentication system
+- Camera integration
+- Notification system
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+Last Updated: March 6, 2026
+Document Version: 1.0.0
