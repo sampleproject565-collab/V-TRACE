@@ -6,19 +6,39 @@
 // 3. Buy a phone number: Console → Phone Numbers → Buy a Number
 // 4. Update the credentials below
 
-const TWILIO_ACCOUNT_SID = 'ACb98cb831092dff486078a8f160d75498'; // Your Account SID
-const TWILIO_AUTH_TOKEN = 'bca0ae50d38c5b0556cac65f95aa4487';   // Your Auth Token
-const TWILIO_PHONE_NUMBER = '+1 870 432 6829'; // MUST BE A TWILIO NUMBER (buy from Twilio Console)
+// ⚠️ IMPORTANT: Replace these with your actual Twilio credentials
+// Get them from: https://console.twilio.com/
+const TWILIO_ACCOUNT_SID = 'ACb98cb831092dff486078a8f160d75498'; // Example: ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+const TWILIO_AUTH_TOKEN = 'a4ba16763d2448b36ffa4d0801b50137';   // Example: 32 character string
+const TWILIO_PHONE_NUMBER = '+18704326829';
 
-// NOTE: The phone number above (+919342853720) won't work because it's not a Twilio number
-// You need to:
-// 1. Go to https://console.twilio.com/us1/develop/phone-numbers/manage/incoming
-// 2. Click "Buy a number"
-// 3. Select a country (US numbers are cheapest at $1/month)
-// 4. Buy the number
-// 5. Replace TWILIO_PHONE_NUMBER above with your purchased number
+
+// 🔧 DEVELOPMENT MODE: Set to true to bypass SMS and show OTP in console
+// ⚠️ PRODUCTION: Set to false to send real SMS via Twilio
+const DEV_MODE = true; // Change to false when you have valid Twilio credentials
+
+/*
+ * PRODUCTION CHECKLIST:
+ * [ ] Sign up at https://www.twilio.com/
+ * [ ] Get Account SID from console
+ * [ ] Get Auth Token from console
+ * [ ] Buy a phone number with SMS capability
+ * [ ] Update TWILIO_ACCOUNT_SID above
+ * [ ] Update TWILIO_AUTH_TOKEN above
+ * [ ] Update TWILIO_PHONE_NUMBER above
+ * [ ] Set DEV_MODE = false
+ * [ ] Test with a real phone number
+ */
 
 export const sendOTPViaSMS = async (phoneNumber: string, otp: string): Promise<boolean> => {
+  // Development mode: Just log OTP to console
+  if (DEV_MODE) {
+    console.log('🔐 DEV MODE - OTP for', phoneNumber, ':', otp);
+    console.log('⚠️ In production, set DEV_MODE = false in smsService.ts');
+    return true;
+  }
+
+  // Production mode: Send via Twilio
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
     

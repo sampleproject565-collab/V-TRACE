@@ -148,3 +148,180 @@ export const getVisitsByEmployee = async (employeeId: string) => {
   
   return visits;
 };
+
+// Travel Expense helpers
+export const createTravelExpense = async (expenseData: {
+  employeeId: string;
+  sessionId: string;
+  distanceKm: number;
+  taRate: number;
+  totalExpense: number;
+  date: Date;
+}) => {
+  const expensesRef = ref(db, 'travelExpenses');
+  const newExpenseRef = push(expensesRef);
+  
+  await set(newExpenseRef, {
+    ...expenseData,
+    date: expenseData.date.toISOString(),
+    createdAt: new Date().toISOString(),
+  });
+  
+  return newExpenseRef.key;
+};
+
+export const getTravelExpensesByEmployee = async (employeeId: string) => {
+  const expensesRef = ref(db, 'travelExpenses');
+  const snapshot = await get(expensesRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const expenses: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.employeeId === employeeId) {
+      expenses.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  return expenses;
+};
+
+// Customer CRM helpers
+export const createCustomer = async (customerData: {
+  employeeId: string;
+  type: 'Farmer' | 'Dealer' | 'Distributor';
+  name: string;
+  phone: string;
+  latitude: number;
+  longitude: number;
+  // Farmer fields
+  cropType?: string;
+  landSize?: string;
+  village?: string;
+  // Dealer fields
+  shopName?: string;
+  licenseNumber?: string;
+  productsSold?: string;
+  // Distributor fields
+  companyName?: string;
+  territory?: string;
+  gstNumber?: string;
+}) => {
+  const customersRef = ref(db, 'customers');
+  const newCustomerRef = push(customersRef);
+  
+  await set(newCustomerRef, {
+    ...customerData,
+    createdAt: new Date().toISOString(),
+  });
+  
+  return newCustomerRef.key;
+};
+
+export const getCustomersByEmployee = async (employeeId: string) => {
+  const customersRef = ref(db, 'customers');
+  const snapshot = await get(customersRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const customers: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.employeeId === employeeId) {
+      customers.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  return customers;
+};
+
+// Crop Report helpers
+export const createCropReport = async (reportData: {
+  employeeId: string;
+  sessionId: string;
+  cropName: string;
+  disease: string;
+  notes: string;
+  photoUri: string;
+  latitude: number;
+  longitude: number;
+}) => {
+  const reportsRef = ref(db, 'cropReports');
+  const newReportRef = push(reportsRef);
+  
+  await set(newReportRef, {
+    ...reportData,
+    timestamp: new Date().toISOString(),
+  });
+  
+  return newReportRef.key;
+};
+
+export const getCropReportsByEmployee = async (employeeId: string) => {
+  const reportsRef = ref(db, 'cropReports');
+  const snapshot = await get(reportsRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const reports: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.employeeId === employeeId) {
+      reports.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  return reports;
+};
+
+// Field Measurement helpers
+export const createFieldMeasurement = async (measurementData: {
+  employeeId: string;
+  sessionId: string;
+  customerName: string;
+  points: Array<{ latitude: number; longitude: number }>;
+  areaSquareMeters: number;
+  areaAcres: number;
+  areaSquareFeet: number;
+  notes?: string;
+}) => {
+  const measurementsRef = ref(db, 'fieldMeasurements');
+  const newMeasurementRef = push(measurementsRef);
+  
+  await set(newMeasurementRef, {
+    ...measurementData,
+    timestamp: new Date().toISOString(),
+  });
+  
+  return newMeasurementRef.key;
+};
+
+export const getFieldMeasurementsByEmployee = async (employeeId: string) => {
+  const measurementsRef = ref(db, 'fieldMeasurements');
+  const snapshot = await get(measurementsRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const measurements: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.employeeId === employeeId) {
+      measurements.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  return measurements;
+};

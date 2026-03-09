@@ -17,10 +17,18 @@ export const sendOTP = async (phoneNumber: string) => {
   // Send OTP via SMS
   try {
     await sendOTPViaSMS(phoneNumber, otp);
-    return { success: true, message: 'OTP sent successfully' };
+    // In development, return OTP for easy testing
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📱 OTP for testing:', otp);
+    }
+    return { success: true, message: 'OTP sent successfully', otp: process.env.NODE_ENV === 'development' ? otp : undefined };
   } catch (error: any) {
     console.error('SMS sending failed:', error);
-    // Don't return OTP in production
+    // In development, still return success with OTP for testing
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📱 OTP for testing (SMS failed):', otp);
+      return { success: true, message: 'OTP generated (check console)', otp };
+    }
     return { success: false, message: 'Failed to send SMS' };
   }
 };
