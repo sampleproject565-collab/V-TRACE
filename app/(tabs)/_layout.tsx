@@ -71,12 +71,12 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="visit"
+        name="employees"
         options={{
-          title: "Visit",
+          title: "Employees",
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons
-              name="handshake"
+              name="people"
               size={focused ? 30 : 26}
               color={color}
             />
