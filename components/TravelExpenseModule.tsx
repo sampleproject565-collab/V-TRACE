@@ -1,5 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { off, onValue, ref } from 'firebase/database';
 import { getDistance } from 'geolib';
 import React, { useEffect, useState } from 'react';
 import {
@@ -12,8 +13,18 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { db } from '../firebase';
 import { createTravelExpense } from '../firebaseHelpers';
 import { useSession } from './SessionContext';
+
+interface SavedExpense {
+    id: string;
+    distanceKm: number;
+    taRate: number;
+    totalExpense: number;
+    date: string;
+    createdAt: string;
+}
 
 export default function TravelExpenseModule() {
     const { session, employee } = useSession();
@@ -25,6 +36,42 @@ export default function TravelExpenseModule() {
     const [isTracking, setIsTracking] = useState(false);
     const [trackingPoints, setTrackingPoints] = useState<Array<{ latitude: number; longitude: number }>>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [savedExpenses, setSavedExpenses] = useState<SavedExpense[]>([]);
+    const [showHistory, setShowHistory] = useState(false);
+
+    // Load saved expenses from Firebase
+    useEffect(() => {
+        if (!employee) return;
+
+        const expensesRef = ref(db, 'travelExpenses');
+        const unsubscribe = onValue(expensesRef, (snapshot) => {
+            if (!snapshot.exists()) {
+                setSavedExpenses([]);
+                return;
+            }
+
+            const expenses: SavedExpense[] = [];
+            snapshot.forEach((childSnapshot) => {
+                const data = childSnapshot.val();
+                if (data.employeeId === employee.employeeId) {
+                    expenses.push({
+                        id: childSnapshot.key || '',
+                        distanceKm: data.distanceKm,
+                        taRate: data.taRate,
+                        totalExpense: data.totalExpense,
+                        date: data.date,
+                        createdAt: data.createdAt,
+                    });
+                }
+            });
+
+            // Sort by date (newest first)
+            expenses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setSavedExpenses(expenses);
+        });
+
+        return () => off(expensesRef, 'value', unsubscribe);
+    }, [employee]);
 
     useEffect(() => {
         const rate = parseFloat(taRate) || 0;
@@ -111,6 +158,8 @@ export default function TravelExpenseModule() {
         }
     };
 
+    const totalSavedExpenses = savedExpenses.reduce((sum, exp) => sum + exp.totalExpense, 0);
+
     return (
         <ScrollView
             style={styles.container}
@@ -124,6 +173,74 @@ export default function TravelExpenseModule() {
                 <Text style={styles.title}>Travel Expense Calculator</Text>
             </View>
             <Text style={styles.subtitle}>Track distance and calculate TA reimbursement</Text>
+
+            {/* Toggle View Button */}
+            <View style={styles.toggleContainer}>
+                <TouchableOpacity
+                    style={[styles.toggleButton, !showHistory && styles.toggleButtonActive]}
+                    onPress={() => setShowHistory(false)}
+                >
+                    <MaterialIcons name="add-circle" size={20} color={!showHistory ? '#fff' : '#2196F3'} />
+                    <Text style={[styles.toggleText, !showHistory && styles.toggleTextActive]}>New Expense</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.toggleButton, showHistory && styles.toggleButtonActive]}
+                    onPress={() => setShowHistory(true)}
+                >
+                    <MaterialIcons name="history" size={20} color={showHistory ? '#fff' : '#2196F3'} />
+                    <Text style={[styles.toggleText, showHistory && styles.toggleTextActive]}>History ({savedExpenses.length})</Text>
+                </TouchableOpacity>
+            </View>
+
+            {showHistory ? (
+                // History View
+                <>
+                    {savedExpenses.length > 0 && (
+                        <View style={styles.totalCard}>
+                            <Text style={styles.totalLabel}>Total Expenses</Text>
+                            <Text style={styles.totalValue}>₹ {totalSavedExpenses.toFixed(2)}</Text>
+                        </View>
+                    )}
+
+                    {savedExpenses.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <MaterialIcons name="receipt-long" size={64} color="#ccc" />
+                            <Text style={styles.emptyText}>No expenses recorded yet</Text>
+                        </View>
+                    ) : (
+                        savedExpenses.map((expense) => (
+                            <View key={expense.id} style={styles.historyCard}>
+                                <View style={styles.historyHeader}>
+                                    <MaterialIcons name="receipt" size={24} color="#2196F3" />
+                                    <Text style={styles.historyDate}>
+                                        {new Date(expense.date).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                        })}
+                                    </Text>
+                                </View>
+                                <View style={styles.historyDetails}>
+                                    <View style={styles.historyRow}>
+                                        <Text style={styles.historyLabel}>Distance:</Text>
+                                        <Text style={styles.historyValue}>{expense.distanceKm.toFixed(2)} KM</Text>
+                                    </View>
+                                    <View style={styles.historyRow}>
+                                        <Text style={styles.historyLabel}>TA Rate:</Text>
+                                        <Text style={styles.historyValue}>₹{expense.taRate.toFixed(2)} / KM</Text>
+                                    </View>
+                                    <View style={[styles.historyRow, styles.historyTotal]}>
+                                        <Text style={styles.historyTotalLabel}>Total:</Text>
+                                        <Text style={styles.historyTotalValue}>₹{expense.totalExpense.toFixed(2)}</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        ))
+                    )}
+                </>
+            ) : (
+                // New Expense View
+                <>
 
             {/* Distance Display */}
             <View style={styles.distanceCard}>
@@ -186,6 +303,8 @@ export default function TravelExpenseModule() {
                 </Text>
                 {!isSaving && <MaterialIcons name="save" size={24} color="#000" />}
             </TouchableOpacity>
+            </>
+            )}
         </ScrollView>
     );
 }
@@ -349,5 +468,121 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
         color: '#000',
+    },
+    toggleContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#f5f5f5',
+        borderRadius: 15,
+        padding: 5,
+        marginBottom: 20,
+    },
+    toggleButton: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderRadius: 10,
+        gap: 8,
+    },
+    toggleButtonActive: {
+        backgroundColor: '#2196F3',
+    },
+    toggleText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#2196F3',
+    },
+    toggleTextActive: {
+        color: '#fff',
+    },
+    totalCard: {
+        alignItems: 'center',
+        padding: 25,
+        backgroundColor: '#e8f5e9',
+        borderRadius: 20,
+        marginBottom: 20,
+        borderWidth: 2,
+        borderColor: '#4CAF50',
+    },
+    totalLabel: {
+        fontSize: 16,
+        color: '#666',
+    },
+    totalValue: {
+        fontSize: 42,
+        fontWeight: 'bold',
+        color: '#4CAF50',
+        marginTop: 10,
+    },
+    historyCard: {
+        backgroundColor: '#fff',
+        borderRadius: 15,
+        padding: 15,
+        marginBottom: 15,
+        borderWidth: 1,
+        borderColor: '#e5e5e5',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    historyHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 15,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    historyDate: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#000',
+        marginLeft: 10,
+    },
+    historyDetails: {
+        gap: 8,
+    },
+    historyRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    historyLabel: {
+        fontSize: 14,
+        color: '#666',
+    },
+    historyValue: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#000',
+    },
+    historyTotal: {
+        marginTop: 8,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+    },
+    historyTotalLabel: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#000',
+    },
+    historyTotalValue: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#2196F3',
+    },
+    emptyState: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 60,
+    },
+    emptyText: {
+        fontSize: 16,
+        color: '#999',
+        marginTop: 15,
     },
 });

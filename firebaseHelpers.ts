@@ -288,7 +288,10 @@ export const getCropReportsByEmployee = async (employeeId: string) => {
 export const createFieldMeasurement = async (measurementData: {
   employeeId: string;
   sessionId: string;
-  customerName: string;
+  fieldName: string;
+  locationName: string;
+  uploaderName: string;
+  customerName?: string; // Keep for backward compatibility
   points: Array<{ latitude: number; longitude: number }>;
   areaSquareMeters: number;
   areaAcres: number;

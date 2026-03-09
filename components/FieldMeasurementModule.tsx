@@ -28,7 +28,9 @@ export default function FieldMeasurementModule() {
     const { session, employee } = useSession();
     const insets = useSafeAreaInsets();
 
-    const [customerName, setCustomerName] = useState('');
+    const [fieldName, setFieldName] = useState('');
+    const [locationName, setLocationName] = useState('');
+    const [uploaderName, setUploaderName] = useState('');
     const [notes, setNotes] = useState('');
     const [points, setPoints] = useState<GPSPoint[]>([]);
     const [isTracking, setIsTracking] = useState(false);
@@ -240,8 +242,8 @@ export default function FieldMeasurementModule() {
             return;
         }
 
-        if (!customerName.trim() || points.length < 3 || area.sqMeters === 0) {
-            Alert.alert('Missing Data', 'Please enter customer name and measure the field area.');
+        if (!fieldName.trim() || !locationName.trim() || !uploaderName.trim() || points.length < 3 || area.sqMeters === 0) {
+            Alert.alert('Missing Data', 'Please enter field name, location name, uploader name, and measure the field area.');
             return;
         }
 
@@ -254,7 +256,10 @@ export default function FieldMeasurementModule() {
             await createFieldMeasurement({
                 employeeId: employee.employeeId,
                 sessionId: session.sessionId,
-                customerName: customerName.trim(),
+                fieldName: fieldName.trim(),
+                locationName: locationName.trim(),
+                uploaderName: uploaderName.trim(),
+                customerName: `${fieldName.trim()} - ${locationName.trim()}`, // Keep for backward compatibility
                 points: points.map(p => ({ latitude: p.latitude, longitude: p.longitude })),
                 areaSquareMeters: parseFloat(area.sqMeters.toFixed(2)),
                 areaAcres: parseFloat(area.acres.toFixed(4)),
@@ -265,7 +270,9 @@ export default function FieldMeasurementModule() {
             Alert.alert('Success', 'Field measurement saved successfully!');
 
             // Reset
-            setCustomerName('');
+            setFieldName('');
+            setLocationName('');
+            setUploaderName('');
             setNotes('');
             setPoints([]);
             setArea({ sqMeters: 0, acres: 0, sqFeet: 0 });
@@ -417,12 +424,32 @@ export default function FieldMeasurementModule() {
             {area.sqMeters > 0 && (
                 <View style={styles.formSection}>
                     <View style={styles.inputContainer}>
+                        <MaterialIcons name="landscape" size={24} color="#999" style={styles.inputIcon} />
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Field Name *"
+                            value={fieldName}
+                            onChangeText={setFieldName}
+                        />
+                    </View>
+
+                    <View style={styles.inputContainer}>
+                        <MaterialIcons name="location-on" size={24} color="#999" style={styles.inputIcon} />
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Location Name *"
+                            value={locationName}
+                            onChangeText={setLocationName}
+                        />
+                    </View>
+
+                    <View style={styles.inputContainer}>
                         <MaterialIcons name="person" size={24} color="#999" style={styles.inputIcon} />
                         <TextInput
                             style={styles.input}
-                            placeholder="Customer/Farmer Name *"
-                            value={customerName}
-                            onChangeText={setCustomerName}
+                            placeholder="Uploader Name *"
+                            value={uploaderName}
+                            onChangeText={setUploaderName}
                         />
                     </View>
 

@@ -45,7 +45,7 @@ export default function TasksModule() {
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [reasonModalVisible, setReasonModalVisible] = useState(false);
     const [reason, setReason] = useState('');
-    const [actionType, setActionType] = useState<'reject' | 'not_completed' | null>(null);
+    const [actionType, setActionType] = useState<'rejected' | 'not_completed' | null>(null);
 
     useEffect(() => {
         if (!employee) return;
@@ -106,7 +106,7 @@ export default function TasksModule() {
 
     const handleReject = (task: Task) => {
         setSelectedTask(task);
-        setActionType('reject');
+        setActionType('rejected');
         setReasonModalVisible(true);
     };
 
@@ -150,7 +150,7 @@ export default function TasksModule() {
 
         try {
             await updateTaskStatus(selectedTask.id, actionType, reason.trim());
-            Alert.alert('Success', `Task ${actionType === 'reject' ? 'rejected' : 'marked as not completed'} successfully!`);
+            Alert.alert('Success', `Task ${actionType === 'rejected' ? 'rejected' : 'marked as not completed'} successfully!`);
             setReasonModalVisible(false);
             setReason('');
             setSelectedTask(null);
@@ -231,7 +231,7 @@ export default function TasksModule() {
                     <View style={styles.taskTitleRow}>
                         <Text style={styles.taskTitle}>{title}</Text>
                         <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(priority) }]}>
-                            <Text style={styles.priorityText}>{priority.toUpperCase()}</Text>
+                            <Text style={styles.priorityText}>{(priority || 'medium').toUpperCase()}</Text>
                         </View>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(status) + '20', borderColor: getStatusColor(status) }]}>
@@ -379,10 +379,10 @@ export default function TasksModule() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>
-                            {actionType === 'reject' ? 'Rejection Reason' : 'Why Not Completed?'}
+                            {actionType === 'rejected' ? 'Rejection Reason' : 'Why Not Completed?'}
                         </Text>
                         <Text style={styles.modalSubtitle}>
-                            Please provide a reason for {actionType === 'reject' ? 'rejecting' : 'not completing'} this task
+                            Please provide a reason for {actionType === 'rejected' ? 'rejecting' : 'not completing'} this task
                         </Text>
 
                         <TextInput

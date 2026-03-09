@@ -95,7 +95,8 @@ export default function CalendarScreen() {
                     const grouped = new Map<string, DailySummary>();
 
                     sessions.forEach(s => {
-                        const dStr = s.startTime.toLocaleDateString();
+                        const dateObj = new Date(s.startTime);
+                        const dStr = dateObj.toISOString().split('T')[0]; // Use YYYY-MM-DD format
                         if (!grouped.has(dStr)) {
                             grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], totalWorkMs: 0, totalBreakMs: 0 });
                         }
@@ -106,7 +107,8 @@ export default function CalendarScreen() {
                     });
 
                     visits.forEach(v => {
-                        const dStr = v.timestamp.toLocaleDateString();
+                        const dateObj = new Date(v.timestamp);
+                        const dStr = dateObj.toISOString().split('T')[0]; // Use YYYY-MM-DD format
                         if (!grouped.has(dStr)) {
                             grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], totalWorkMs: 0, totalBreakMs: 0 });
                         }
@@ -226,7 +228,14 @@ export default function CalendarScreen() {
                 history.map((day, ix) => (
                     <View key={ix} style={styles.dayCard}>
                         <View style={styles.dayHeader}>
-                            <Text style={styles.dateText}>{new Date(day.dateStr).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
+                            <Text style={styles.dateText}>
+                                {new Date(day.dateStr + 'T00:00:00').toLocaleDateString('en-US', { 
+                                    weekday: 'long', 
+                                    month: 'long', 
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                })}
+                            </Text>
                         </View>
 
                         <View style={styles.metricsRow}>
