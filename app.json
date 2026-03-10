@@ -63,8 +63,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3e9707f9-4c6b-4977-8bbe-12f934982f18"
+        "projectId": "61c4e991-4b0d-463b-bdaf-7f986eb1ce4d"
       }
-    }
+    },
+    "owner": "srinive"
   }
 }
