@@ -13,7 +13,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '../../components/SessionContext';
-import { getTasksByEmployee, updateTaskStatus } from '../../firebaseHelpers';
+import {
+    getTasksByEmployee,
+    updateTaskStatus
+} from '../../firebaseHelpers';
 
 interface Task {
     id: string;
@@ -24,8 +27,20 @@ interface Task {
     status: 'pending' | 'accepted' | 'rejected' | 'completed' | 'not_completed';
     createdAt: string;
     dueDate?: string;
-    contactNumber?: string;
-    contactName?: string;
+    taskType?: 'field' | 'enquiry';
+    priority?: 'high' | 'medium' | 'low';
+    completionDescription?: string;
+    completedAt?: string;
+}
+
+interface EnquiryContact {
+    taskId: string;
+    contactNumber: string;
+    taskTitle: string;
+    taskDescription?: string;
+    dueDate?: string;
+    priority?: string;
+    isCompleted: boolean;
     completionDescription?: string;
     completedAt?: string;
 }
@@ -34,8 +49,7 @@ export default function EnquiryScreen() {
     const { employee } = useSession();
     const insets = useSafeAreaInsets();
     
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const [contacts, setContacts] = useState<ContactItem[]>([]);
+    const [contacts, setContacts] = useState<EnquiryContact[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [descriptions, setDescriptions] = useState<{ [key: string]: string }>({});
@@ -50,68 +64,109 @@ export default function EnquiryScreen() {
         
         try {
             setLoading(true);
-            const tasksData = await getTasksByEmployee(employee.employeeId);
             
-            console.log('=== ENQUIRY DEBUG ===');
-            console.log('Employee ID:', employee.employeeId);
-            console.log('Total tasks fetched:', tasksData.length);
-            console.log('Tasks data:', JSON.stringify(tasksData, null, 2));
+            // Fetch all tasks assigned to this employee
+            const allTasks = await getTasksByEmployee(employee.employeeId);
             
-            setTasks(tasksData);
+            console.log('Total tasks fetched:', allTasks.length);
+            console.log('All tasks data:', JSON.stringify(allTasks, null, 2));
             
-            // Parse tasks and extract individual contact numbers
-            const contactItems: ContactItem[] = [];
+            // Filter only enquiry tasks
+            // If taskType is not set, show all tasks for office staff (backward compatibility)
+            const enquiryTasks = allTasks.filter(task => 
+                task.taskType === 'enquiry' || !task.taskType
+            );
+            
+            console.log('Enquiry tasks:', enquiryTasks.length);
+            
+            // Parse contact numbers from description and create individual enquiry items
+            const contactItems: EnquiryContact[] = [];
             const descMap: { [key: string]: string } = {};
             
-            tasksData.forEach((task: Task) => {
-                console.log('Processing task:', task.id, task.title);
-                
-                // Get contact numbers from multiple possible fields
-                // Priority: contactNumbers > contactNumber > description (if it looks like phone numbers)
-                let numbersString = task.contactNumbers || task.contactNumber || '';
-                
-                // If no numbers found, check if description contains phone numbers
-                if (!numbersString && task.description) {
-                    // Check if description looks like it contains phone numbers (comma-separated digits)
+            enquiryTasks.forEach((task: Task) => {
+                // Check if description contains comma-separated phone numbers
+                if (task.description) {
                     const descriptionHasNumbers = /^[\d,\s+]+$/.test(task.description.trim());
-                    if (descriptionHasNumbers) {
-                        numbersString = task.description;
-                    }
-                }
-                
-                console.log('Numbers string:', numbersString);
-                
-                const numbers = numbersString.split(',').map(n => n.trim()).filter(n => n);
-                console.log('Parsed numbers:', numbers);
-                
-                numbers.forEach((number) => {
-                    const contactKey = `${task.id}_${number}`;
-                    const completion = task.contactCompletions?.[number];
                     
+                    if (descriptionHasNumbers) {
+                        // Parse comma-separated numbers
+                        const numbers = task.description
+                            .split(',')
+                            .map(n => n.trim())
+                            .filter(n => n.length > 0);
+                        
+                        console.log('Parsed numbers from task', task.id, ':', numbers);
+                        
+                        // Create separate enquiry for each number
+                        numbers.forEach(number => {
+                            const contactKey = `${task.id}_${number}`;
+                            
+                            // Check if this specific contact is completed
+                            // We'll store completion per contact in the task's contactCompletions field
+                            const contactCompletions = (task as any).contactCompletions || {};
+                            const completion = contactCompletions[number];
+                            
+                            contactItems.push({
+                                taskId: task.id,
+                                contactNumber: number,
+                                taskTitle: task.title,
+                                taskDescription: task.description,
+                                dueDate: task.dueDate,
+                                priority: task.priority,
+                                isCompleted: !!completion,
+                                completionDescription: completion?.description,
+                                completedAt: completion?.completedAt,
+                            });
+                            
+                            if (completion?.description) {
+                                descMap[contactKey] = completion.description;
+                            }
+                        });
+                    } else {
+                        // Not a phone number list, treat as single enquiry
+                        contactItems.push({
+                            taskId: task.id,
+                            contactNumber: '',
+                            taskTitle: task.title,
+                            taskDescription: task.description,
+                            dueDate: task.dueDate,
+                            priority: task.priority,
+                            isCompleted: task.status === 'completed',
+                            completionDescription: task.completionDescription,
+                            completedAt: task.completedAt,
+                        });
+                        
+                        if (task.completionDescription) {
+                            descMap[task.id] = task.completionDescription;
+                        }
+                    }
+                } else {
+                    // No description, treat as single enquiry
                     contactItems.push({
-                        number,
                         taskId: task.id,
+                        contactNumber: '',
                         taskTitle: task.title,
                         taskDescription: task.description,
-                        isCompleted: !!completion,
-                        completionDescription: completion?.description,
-                        completedAt: completion?.completedAt,
+                        dueDate: task.dueDate,
+                        priority: task.priority,
+                        isCompleted: task.status === 'completed',
+                        completionDescription: task.completionDescription,
+                        completedAt: task.completedAt,
                     });
                     
-                    if (completion?.description) {
-                        descMap[contactKey] = completion.description;
+                    if (task.completionDescription) {
+                        descMap[task.id] = task.completionDescription;
                     }
-                });
+                }
             });
             
             console.log('Total contact items:', contactItems.length);
-            console.log('Contact items:', contactItems);
             
             setContacts(contactItems);
             setDescriptions(descMap);
         } catch (error) {
             console.error('Error loading tasks:', error);
-            Alert.alert('Error', 'Failed to load tasks');
+            Alert.alert('Error', 'Failed to load enquiry tasks: ' + (error as Error).message);
         } finally {
             setLoading(false);
         }
@@ -122,10 +177,12 @@ export default function EnquiryScreen() {
         Linking.openURL(`tel:${cleanNumber}`);
     };
 
-    const handleMarkCompleted = async (contact: ContactItem) => {
+    const handleMarkCompleted = async (contact: EnquiryContact) => {
         if (!employee) return;
         
-        const contactKey = `${contact.taskId}_${contact.number}`;
+        const contactKey = contact.contactNumber 
+            ? `${contact.taskId}_${contact.contactNumber}` 
+            : contact.taskId;
         const description = descriptions[contactKey]?.trim();
         
         if (!description) {
@@ -136,37 +193,46 @@ export default function EnquiryScreen() {
         try {
             setSubmitting(contactKey);
             
-            // Get the task
-            const task = tasks.find(t => t.id === contact.taskId);
-            if (!task) return;
-            
-            // Update contactCompletions
-            const contactCompletions = task.contactCompletions || {};
-            contactCompletions[contact.number] = {
-                description,
-                completedAt: new Date().toISOString(),
-            };
-            
-            // Check if all contacts in this task are completed
-            const numbersString = task.contactNumbers || task.contactNumber || '';
-            const allNumbers = numbersString.split(',').map(n => n.trim()).filter(n => n);
-            const allCompleted = allNumbers.every(num => contactCompletions[num]);
-            
-            // Update task in Firebase
-            await updateTaskStatus(
-                contact.taskId,
-                allCompleted ? 'completed' : 'pending',
-                JSON.stringify(contactCompletions)
-            );
+            if (contact.contactNumber) {
+                // This is a contact-based enquiry, update contactCompletions
+                const allTasks = await getTasksByEmployee(employee.employeeId);
+                const task = allTasks.find(t => t.id === contact.taskId);
+                
+                if (!task) return;
+                
+                const contactCompletions = (task as any).contactCompletions || {};
+                contactCompletions[contact.contactNumber] = {
+                    description,
+                    completedAt: new Date().toISOString(),
+                };
+                
+                // Check if all contacts in this task are completed
+                const numbers = task.description
+                    ?.split(',')
+                    .map(n => n.trim())
+                    .filter(n => n.length > 0) || [];
+                
+                const allCompleted = numbers.every(num => contactCompletions[num]);
+                
+                // Update task with contact completions
+                await updateTaskStatus(
+                    contact.taskId,
+                    allCompleted ? 'completed' : 'pending',
+                    JSON.stringify(contactCompletions)
+                );
+            } else {
+                // Regular task completion
+                await updateTaskStatus(contact.taskId, 'completed', description);
+            }
 
-            Alert.alert('Success', 'Contact enquiry marked as completed');
+            Alert.alert('Success', 'Enquiry marked as completed');
             
             // Reload tasks
             await loadTasks();
             setExpandedId(null);
         } catch (error) {
-            console.error('Error updating contact:', error);
-            Alert.alert('Error', 'Failed to update contact status');
+            console.error('Error updating enquiry:', error);
+            Alert.alert('Error', 'Failed to update enquiry status');
         } finally {
             setSubmitting(null);
         }
@@ -206,7 +272,7 @@ export default function EnquiryScreen() {
                 {/* Pending Contacts */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Pending Contacts</Text>
+                        <Text style={styles.sectionTitle}>Pending Enquiries</Text>
                         <View style={styles.badge}>
                             <Text style={styles.badgeText}>{pendingContacts.length}</Text>
                         </View>
@@ -217,12 +283,14 @@ export default function EnquiryScreen() {
                             <MaterialIcons name="check-circle" size={64} color="#4CAF50" />
                             <Text style={styles.emptyTitle}>All Done!</Text>
                             <Text style={styles.emptyText}>
-                                No pending contact enquiries
+                                No pending enquiry tasks
                             </Text>
                         </View>
                     ) : (
                         pendingContacts.map((contact) => {
-                            const contactKey = `${contact.taskId}_${contact.number}`;
+                            const contactKey = contact.contactNumber 
+                                ? `${contact.taskId}_${contact.contactNumber}` 
+                                : contact.taskId;
                             const isExpanded = expandedId === contactKey;
                             const isSubmittingThis = submitting === contactKey;
                             
@@ -234,20 +302,45 @@ export default function EnquiryScreen() {
                                         activeOpacity={0.7}
                                     >
                                         <View style={styles.taskIconContainer}>
-                                            <MaterialIcons name="phone" size={24} color="#fbb115" />
+                                            <MaterialIcons 
+                                                name={contact.contactNumber ? "phone" : "assignment"} 
+                                                size={24} 
+                                                color="#fbb115" 
+                                            />
                                         </View>
                                         <View style={styles.taskInfo}>
-                                            <Text style={styles.taskNumber}>{contact.number}</Text>
-                                            {contact.taskTitle && (
-                                                <Text style={styles.taskName}>{contact.taskTitle}</Text>
+                                            {contact.contactNumber ? (
+                                                <>
+                                                    <Text style={styles.taskTitle}>{contact.contactNumber}</Text>
+                                                    <Text style={styles.taskSubtitle}>{contact.taskTitle}</Text>
+                                                </>
+                                            ) : (
+                                                <Text style={styles.taskTitle}>{contact.taskTitle}</Text>
+                                            )}
+                                            {contact.dueDate && (
+                                                <Text style={styles.taskDate}>
+                                                    Due: {new Date(contact.dueDate).toLocaleDateString()}
+                                                </Text>
+                                            )}
+                                            {contact.priority && (
+                                                <View style={[
+                                                    styles.priorityBadge,
+                                                    contact.priority === 'high' && styles.priorityHigh,
+                                                    contact.priority === 'medium' && styles.priorityMedium,
+                                                    contact.priority === 'low' && styles.priorityLow,
+                                                ]}>
+                                                    <Text style={styles.priorityText}>{contact.priority.toUpperCase()}</Text>
+                                                </View>
                                             )}
                                         </View>
-                                        <TouchableOpacity
-                                            style={styles.callButton}
-                                            onPress={() => handleCall(contact.number)}
-                                        >
-                                            <MaterialIcons name="call" size={24} color="#4CAF50" />
-                                        </TouchableOpacity>
+                                        {contact.contactNumber && (
+                                            <TouchableOpacity
+                                                style={styles.callButton}
+                                                onPress={() => handleCall(contact.contactNumber)}
+                                            >
+                                                <MaterialIcons name="call" size={24} color="#4CAF50" />
+                                            </TouchableOpacity>
+                                        )}
                                         <MaterialIcons 
                                             name={isExpanded ? "expand-less" : "expand-more"} 
                                             size={28} 
@@ -257,7 +350,7 @@ export default function EnquiryScreen() {
 
                                     {isExpanded && (
                                         <View style={styles.taskDetails}>
-                                            {contact.taskDescription && (
+                                            {contact.taskDescription && !contact.contactNumber && (
                                                 <View style={styles.taskDescriptionBox}>
                                                     <Text style={styles.taskDescriptionLabel}>Task Details:</Text>
                                                     <Text style={styles.taskDescriptionText}>{contact.taskDescription}</Text>
@@ -272,7 +365,7 @@ export default function EnquiryScreen() {
                                                     onChangeText={(text) => 
                                                         setDescriptions(prev => ({ ...prev, [contactKey]: text }))
                                                     }
-                                                    placeholder="Enter conversation details, outcome, and notes..."
+                                                    placeholder="Enter enquiry details, outcome, and notes..."
                                                     placeholderTextColor="#999"
                                                     multiline
                                                     numberOfLines={5}
@@ -309,14 +402,16 @@ export default function EnquiryScreen() {
                 {completedContacts.length > 0 && (
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>Completed Contacts</Text>
+                            <Text style={styles.sectionTitle}>Completed Enquiries</Text>
                             <View style={[styles.badge, styles.badgeCompleted]}>
                                 <Text style={styles.badgeText}>{completedContacts.length}</Text>
                             </View>
                         </View>
                         
                         {completedContacts.map((contact) => {
-                            const contactKey = `${contact.taskId}_${contact.number}`;
+                            const contactKey = contact.contactNumber 
+                                ? `${contact.taskId}_${contact.contactNumber}` 
+                                : contact.taskId;
                             
                             return (
                                 <View key={contactKey} style={styles.completedCard}>
@@ -325,18 +420,36 @@ export default function EnquiryScreen() {
                                             <MaterialIcons name="check-circle" size={24} color="#4CAF50" />
                                         </View>
                                         <View style={styles.completedInfo}>
-                                            <Text style={styles.completedNumber}>{contact.number}</Text>
-                                            {contact.taskTitle && (
-                                                <Text style={styles.completedName}>{contact.taskTitle}</Text>
+                                            {contact.contactNumber ? (
+                                                <>
+                                                    <Text style={styles.completedTitle}>{contact.contactNumber}</Text>
+                                                    <Text style={styles.completedSubtitle}>{contact.taskTitle}</Text>
+                                                </>
+                                            ) : (
+                                                <Text style={styles.completedTitle}>{contact.taskTitle}</Text>
+                                            )}
+                                            {contact.dueDate && (
+                                                <Text style={styles.completedDate}>
+                                                    Due: {new Date(contact.dueDate).toLocaleDateString()}
+                                                </Text>
                                             )}
                                         </View>
-                                        <TouchableOpacity
-                                            style={styles.callButtonSmall}
-                                            onPress={() => handleCall(contact.number)}
-                                        >
-                                            <MaterialIcons name="call" size={20} color="#4CAF50" />
-                                        </TouchableOpacity>
+                                        {contact.contactNumber && (
+                                            <TouchableOpacity
+                                                style={styles.callButtonSmall}
+                                                onPress={() => handleCall(contact.contactNumber)}
+                                            >
+                                                <MaterialIcons name="call" size={20} color="#4CAF50" />
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
+                                    
+                                    {contact.taskDescription && !contact.contactNumber && (
+                                        <View style={styles.taskDescriptionBox}>
+                                            <Text style={styles.taskDescriptionLabel}>Task Details:</Text>
+                                            <Text style={styles.taskDescriptionText}>{contact.taskDescription}</Text>
+                                        </View>
+                                    )}
                                     
                                     {contact.completionDescription && (
                                         <View style={styles.completedDescription}>
@@ -362,7 +475,7 @@ export default function EnquiryScreen() {
                         <MaterialIcons name="assignment" size={64} color="#ccc" />
                         <Text style={styles.emptyTitle}>No Enquiry Tasks</Text>
                         <Text style={styles.emptyText}>
-                            Admin will assign contact numbers for you to enquire
+                            Admin will assign enquiry tasks for you to complete
                         </Text>
                     </View>
                 )}
@@ -482,20 +595,41 @@ const styles = StyleSheet.create({
     taskInfo: {
         flex: 1,
     },
-    taskNumber: {
+    taskTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: '#000',
     },
-    taskName: {
+    taskSubtitle: {
+        fontSize: 14,
+        color: '#666',
+        marginTop: 2,
+    },
+    taskDate: {
         fontSize: 14,
         color: '#666',
         marginTop: 4,
     },
-    taskDescription: {
-        fontSize: 13,
-        color: '#999',
-        marginTop: 4,
+    priorityBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 4,
+        marginTop: 6,
+        alignSelf: 'flex-start',
+    },
+    priorityHigh: {
+        backgroundColor: '#ffebee',
+    },
+    priorityMedium: {
+        backgroundColor: '#fff3e0',
+    },
+    priorityLow: {
+        backgroundColor: '#e8f5e9',
+    },
+    priorityText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: '#666',
     },
     taskDetails: {
         padding: 18,
@@ -583,12 +717,12 @@ const styles = StyleSheet.create({
     completedInfo: {
         flex: 1,
     },
-    completedNumber: {
+    completedTitle: {
         fontSize: 16,
         fontWeight: '600',
         color: '#000',
     },
-    completedName: {
+    completedSubtitle: {
         fontSize: 14,
         color: '#666',
         marginTop: 2,
@@ -620,5 +754,21 @@ const styles = StyleSheet.create({
     },
     callButtonSmall: {
         padding: 6,
+    },
+});
+    descriptionLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#666',
+        marginBottom: 4,
+    },
+    descriptionText: {
+        fontSize: 14,
+        color: '#000',
+        lineHeight: 20,
+    },
+    completedDate: {
+        fontSize: 12,
+        color: '#999',
     },
 });
