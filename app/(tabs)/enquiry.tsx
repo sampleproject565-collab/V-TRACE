@@ -755,7 +755,6 @@ const styles = StyleSheet.create({
     callButtonSmall: {
         padding: 6,
     },
-});
     descriptionLabel: {
         fontSize: 12,
         fontWeight: '600',
@@ -768,6 +767,10 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
     completedDate: {
+        fontSize: 12,
+        color: '#999',
+    },
+});
         fontSize: 12,
         color: '#999',
     },
