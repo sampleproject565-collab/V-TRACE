@@ -366,6 +366,7 @@ export const updateTaskStatus = async (taskId: string, status: 'accepted' | 'rej
     updates.rejectionReason = reason || '';
   } else if (status === 'completed') {
     updates.completedAt = new Date().toISOString();
+    updates.completionDescription = reason || '';
   } else if (status === 'not_completed') {
     updates.notCompletedAt = new Date().toISOString();
     updates.notCompletedReason = reason || '';
@@ -415,4 +416,80 @@ export const getPendingTasksCount = async (employeeId: string) => {
   });
   
   return count;
+};
+
+// Enquiry helpers for Office Staff
+export const createEnquiry = async (enquiryData: {
+  employeeId: string;
+  contactNumber: string;
+  contactName?: string;
+  userSpokeTo: string;
+  description: string;
+  status: 'contacted' | 'not_contacted' | 'follow_up';
+}) => {
+  const enquiriesRef = ref(db, 'enquiries');
+  const newEnquiryRef = push(enquiriesRef);
+  
+  await set(newEnquiryRef, {
+    ...enquiryData,
+    createdAt: new Date().toISOString(),
+  });
+  
+  return newEnquiryRef.key;
+};
+
+export const getEnquiriesByEmployee = async (employeeId: string) => {
+  const enquiriesRef = ref(db, 'enquiries');
+  const snapshot = await get(enquiriesRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const enquiries: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const data = childSnapshot.val();
+    if (data.employeeId === employeeId) {
+      enquiries.push({
+        id: childSnapshot.key,
+        ...data,
+      });
+    }
+  });
+  
+  return enquiries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+// Update contact status to completed
+export const updateContactStatus = async (employeeId: string, contactId: string, status: 'pending' | 'completed', description?: string) => {
+  const contactRef = ref(db, `assignedContacts/${employeeId}/${contactId}`);
+  
+  const updates: any = {
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  
+  if (status === 'completed') {
+    updates.completedAt = new Date().toISOString();
+    updates.description = description || '';
+  }
+  
+  await update(contactRef, updates);
+};
+
+
+// Get contact numbers assigned by admin to office staff
+export const getAssignedContacts = async (employeeId: string) => {
+  const contactsRef = ref(db, `assignedContacts/${employeeId}`);
+  const snapshot = await get(contactsRef);
+  
+  if (!snapshot.exists()) return [];
+  
+  const contacts: any[] = [];
+  snapshot.forEach((childSnapshot) => {
+    contacts.push({
+      id: childSnapshot.key,
+      ...childSnapshot.val(),
+    });
+  });
+  
+  return contacts;
 };

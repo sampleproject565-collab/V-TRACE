@@ -85,7 +85,7 @@ export const checkUserExists = async (phoneNumber: string) => {
 };
 
 // Create new user in database
-export const createUser = async (phoneNumber: string, name: string) => {
+export const createUser = async (phoneNumber: string, name: string, role: 'field_staff' | 'office_staff' = 'field_staff') => {
   const sanitizedPhone = phoneNumber.replace(/[^0-9]/g, '');
   const userRef = ref(db, `users/${sanitizedPhone}`);
   
@@ -93,6 +93,7 @@ export const createUser = async (phoneNumber: string, name: string) => {
     phoneNumber,
     name,
     employeeId: sanitizedPhone,
+    role,
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
   };
@@ -106,4 +107,19 @@ export const updateLastLogin = async (phoneNumber: string) => {
   const sanitizedPhone = phoneNumber.replace(/[^0-9]/g, '');
   const userRef = ref(db, `users/${sanitizedPhone}/lastLogin`);
   await set(userRef, new Date().toISOString());
+};
+
+// Update user role
+export const updateUserRole = async (phoneNumber: string, role: 'field_staff' | 'office_staff') => {
+  const sanitizedPhone = phoneNumber.replace(/[^0-9]/g, '');
+  const userRef = ref(db, `users/${sanitizedPhone}/role`);
+  await set(userRef, role);
+};
+
+// Get user data
+export const getUserData = async (phoneNumber: string) => {
+  const sanitizedPhone = phoneNumber.replace(/[^0-9]/g, '');
+  const userRef = ref(db, `users/${sanitizedPhone}`);
+  const snapshot = await get(userRef);
+  return snapshot.exists() ? snapshot.val() : null;
 };

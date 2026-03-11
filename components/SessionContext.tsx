@@ -18,6 +18,7 @@ Notifications.setNotificationHandler({
 interface Employee {
   employeeId: string;
   name: string;
+  role?: 'field_staff' | 'office_staff';
 }
 
 export type WorkType = 'OFFICE' | 'FIELD' | 'FARM';
@@ -38,6 +39,7 @@ interface SessionContextType {
   session: SessionState;
   login: (emp: Employee) => void;
   logout: () => void;
+  refreshUserRole: () => Promise<void>;
   startSession: (location: any, photoUri: string, workType: WorkType) => Promise<void>;
   pauseSession: () => Promise<void>;
   resumeSession: () => Promise<void>;
@@ -79,7 +81,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [intervalId, setIntervalId] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Hydrate from Storage on load
+  // Hydrate from Storage on load and sync role from Firebase
   useEffect(() => {
     const hydrate = async () => {
       try {
@@ -87,7 +89,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const storedSession = await AsyncStorage.getItem('vtrace_session');
 
         if (storedEmployee) {
-          setEmployee(JSON.parse(storedEmployee));
+          const employeeData = JSON.parse(storedEmployee);
+          
+          // Fetch latest role from Firebase
+          try {
+            const { get, ref } = await import('firebase/database');
+            const { db } = await import('../firebase');
+            const sanitizedPhone = employeeData.employeeId;
+            const userRef = ref(db, `users/${sanitizedPhone}`);
+            const snapshot = await get(userRef);
+            
+            if (snapshot.exists()) {
+              const userData = snapshot.val();
+              // Update employee with latest role from database
+              employeeData.role = userData.role || 'field_staff';
+              // Update storage with latest role
+              await AsyncStorage.setItem('vtrace_employee', JSON.stringify(employeeData));
+            }
+          } catch (roleError) {
+            console.warn('Failed to fetch role from Firebase, using cached data', roleError);
+          }
+          
+          setEmployee(employeeData);
         }
         if (storedSession) {
           const parsed = JSON.parse(storedSession);
@@ -155,6 +178,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login = async (emp: Employee) => {
     setEmployee(emp);
     await AsyncStorage.setItem('vtrace_employee', JSON.stringify(emp)).catch(console.warn);
+  };
+
+  const refreshUserRole = async () => {
+    if (!employee) return;
+    
+    try {
+      const { get, ref } = await import('firebase/database');
+      const { db } = await import('../firebase');
+      const sanitizedPhone = employee.employeeId;
+      const userRef = ref(db, `users/${sanitizedPhone}`);
+      const snapshot = await get(userRef);
+      
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        const updatedEmployee = {
+          ...employee,
+          role: userData.role || 'field_staff',
+        };
+        setEmployee(updatedEmployee);
+        await AsyncStorage.setItem('vtrace_employee', JSON.stringify(updatedEmployee));
+      }
+    } catch (error) {
+      console.error('Failed to refresh user role', error);
+    }
   };
 
   const logout = async () => {
@@ -360,6 +407,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       session,
       login,
       logout,
+      refreshUserRole,
       startSession,
       pauseSession,
       resumeSession,

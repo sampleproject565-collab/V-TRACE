@@ -15,7 +15,7 @@ const TWILIO_PHONE_NUMBER = '+18704326829';
 
 // 🔧 DEVELOPMENT MODE: Set to true to bypass SMS and show OTP in console
 // ⚠️ PRODUCTION: Set to false to send real SMS via Twilio
-const DEV_MODE = false; // Change to false when you have valid Twilio credentials
+const DEV_MODE = true; // Change to false when you have valid Twilio credentials
 
 /*
  * PRODUCTION CHECKLIST:

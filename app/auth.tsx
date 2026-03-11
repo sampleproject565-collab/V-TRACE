@@ -133,6 +133,7 @@ export default function AuthOTPScreen() {
                 login({
                     employeeId: userData.employeeId,
                     name: userData.name,
+                    role: userData.role,
                 });
             } else {
                 // Login existing user
@@ -141,6 +142,7 @@ export default function AuthOTPScreen() {
                 login({
                     employeeId: userData.employeeId,
                     name: userData.name,
+                    role: userData.role || 'field_staff', // Default to field_staff for existing users
                 });
             }
 

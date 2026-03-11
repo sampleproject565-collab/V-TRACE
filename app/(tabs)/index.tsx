@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { off, onValue, ref } from "firebase/database";
 import React from "react";
 import {
+    Alert,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -14,11 +15,19 @@ import { useSession } from "../../components/SessionContext";
 import { db } from "../../firebase";
 
 export default function HomeScreen() {
-  const { employee, session, logout, locationCount } = useSession();
+  const { employee, session, logout, locationCount, refreshUserRole } = useSession();
   const router = useRouter();
+  const [refreshing, setRefreshing] = React.useState(false);
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleRefreshRole = async () => {
+    setRefreshing(true);
+    await refreshUserRole();
+    setRefreshing(false);
+    Alert.alert('Success', 'User role refreshed from database');
   };
 
   const [elapsedMs, setElapsedMs] = React.useState(0);
@@ -123,6 +132,18 @@ export default function HomeScreen() {
               <Text style={styles.employeeIdText}>
                 {employee?.name} (ID: {employee?.employeeId})
               </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <Text style={[styles.employeeIdText, { color: employee?.role === 'office_staff' ? '#4CAF50' : '#2196F3', fontWeight: '600' }]}>
+                  Role: {employee?.role === 'office_staff' ? 'Office Staff' : 'Field Staff'}
+                </Text>
+                <TouchableOpacity
+                  onPress={handleRefreshRole}
+                  disabled={refreshing}
+                  style={{ opacity: refreshing ? 0.5 : 1 }}
+                >
+                  <MaterialIcons name="refresh" size={18} color="#fbb115" />
+                </TouchableOpacity>
+              </View>
             </View>
             <TouchableOpacity
               style={styles.logoutButton}

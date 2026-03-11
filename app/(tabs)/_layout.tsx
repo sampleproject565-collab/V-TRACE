@@ -15,6 +15,8 @@ export default function TabLayout() {
     return <Redirect href="/auth" />;
   }
 
+  const isOfficeStaff = employee?.role === 'office_staff';
+
   return (
     <Tabs
       screenOptions={{
@@ -56,10 +58,12 @@ export default function TabLayout() {
         }}
       />
 
+      {/* S2C Tab - Only for Field Staff */}
       <Tabs.Screen
         name="session"
         options={{
           title: "S2C",
+          href: isOfficeStaff ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons
               name="timer"
@@ -70,10 +74,28 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Enquiry Tab - Only for Office Staff */}
+      <Tabs.Screen
+        name="enquiry"
+        options={{
+          title: "Enquiry",
+          href: isOfficeStaff ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons
+              name="phone-in-talk"
+              size={focused ? 30 : 26}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      {/* Employees Tab - Only for Field Staff */}
       <Tabs.Screen
         name="employees"
         options={{
           title: "Employees",
+          href: isOfficeStaff ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons
               name="people"
@@ -84,10 +106,12 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Map Tab - Only for Field Staff */}
       <Tabs.Screen
         name="map"
         options={{
           title: "Map",
+          href: isOfficeStaff ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons
               name="map"
@@ -98,6 +122,7 @@ export default function TabLayout() {
         }}
       />
 
+      {/* History Tab - For Both */}
       <Tabs.Screen
         name="calendar"
         options={{

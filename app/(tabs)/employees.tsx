@@ -17,14 +17,36 @@ import TasksModule from '../../components/TasksModule';
 import TravelExpenseModule from '../../components/TravelExpenseModule';
 import VisitModule from '../../components/VisitModule';
 
-type ModuleType = 'visit' | 'expense' | 'crm' | 'crop' | 'measure' | 'tasks' | null;
+type ModuleType = 'visit' | 'expense' | 'crm' | 'crop' | 'measure' | 'tasks' | 'enquiry' | null;
 
 export default function EmployeesScreen() {
     const { employee } = useSession();
     const insets = useSafeAreaInsets();
     const [activeModule, setActiveModule] = useState<ModuleType>(null);
 
-    const modules = [
+    // Determine if user is office staff
+    const isOfficeStaff = employee?.role === 'office_staff';
+
+    // Office Staff modules
+    const officeStaffModules = [
+        { 
+            id: 'enquiry', 
+            name: 'Contact Enquiry', 
+            icon: 'phone-in-talk',
+            description: 'Call assigned contacts and log enquiry details',
+            color: '#fbb115',
+        },
+        { 
+            id: 'tasks', 
+            name: 'My Tasks', 
+            icon: 'assignment',
+            description: 'View and manage daily tasks from admin',
+            color: '#2196F3',
+        },
+    ];
+
+    // Field Staff modules
+    const fieldStaffModules = [
         { 
             id: 'tasks', 
             name: 'My Tasks', 
@@ -69,8 +91,12 @@ export default function EmployeesScreen() {
         },
     ];
 
+    const modules = isOfficeStaff ? officeStaffModules : fieldStaffModules;
+
     const renderModuleContent = () => {
         switch (activeModule) {
+            case 'enquiry':
+                return <OfficeStaffEnquiryModule />;
             case 'tasks':
                 return <TasksModule />;
             case 'visit':
@@ -98,7 +124,9 @@ export default function EmployeesScreen() {
             {/* Header */}
             <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 10 }]}>
                 <MaterialIcons name="people" size={36} color="#fbb115" />
-                <Text style={styles.headerTitle}>Employees</Text>
+                <Text style={styles.headerTitle}>
+                    {isOfficeStaff ? 'Office Staff' : 'Field Staff'}
+                </Text>
             </View>
 
             {/* Module Grid */}
