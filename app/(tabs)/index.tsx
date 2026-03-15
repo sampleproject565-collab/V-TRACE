@@ -18,6 +18,7 @@ export default function HomeScreen() {
   const { employee, session, logout, locationCount, refreshUserRole } = useSession();
   const router = useRouter();
   const [refreshing, setRefreshing] = React.useState(false);
+  const isOfficeStaff = employee?.role === 'office_staff';
 
   const handleLogout = () => {
     logout();
@@ -154,69 +155,109 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.statusCard}>
-            <View style={styles.statusHeader}>
-              <View style={[styles.statusDotActive, { backgroundColor: getStatusColor() }]} />
-              <Text style={styles.statusText}>Session: {getStatusText()}</Text>
-            </View>
+          {isOfficeStaff ? (
+            // Office Staff Dashboard
+            <>
+              <View style={styles.statusCard}>
+                <View style={styles.statusHeader}>
+                  <MaterialIcons name="business" size={24} color="#4CAF50" />
+                  <Text style={styles.statusText}>Office Staff Portal</Text>
+                </View>
+                <Text style={styles.welcomeText}>
+                  Manage enquiries and customer interactions
+                </Text>
+              </View>
 
-            <View style={styles.trackingInfo}>
-              <View style={styles.trackingRow}>
-                <MaterialIcons name="schedule" size={20} color="#fbb115" />
-                <View style={styles.trackingDetails}>
-                  <Text style={styles.trackingLabel}>Active Session Time</Text>
-                  <Text style={styles.trackingValue}>
-                    {formatTime(elapsedMs)}
+              <View style={styles.gridContainer}>
+                <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/enquiry')}>
+                  <MaterialIcons name="assignment" size={40} color="#fbb115" />
+                  <Text style={styles.gridItemText}>Enquiries</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/calendar')}>
+                  <MaterialIcons name="history" size={40} color="#fbb115" />
+                  <Text style={styles.gridItemText}>History</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.infoBox}>
+                <MaterialIcons name="info" size={24} color="#fbb115" />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>Welcome to V Trace</Text>
+                  <Text style={styles.infoText}>
+                    Manage customer enquiries and track interactions from the office.
                   </Text>
                 </View>
               </View>
+            </>
+          ) : (
+            // Field Staff Dashboard
+            <>
+              <View style={styles.statusCard}>
+                <View style={styles.statusHeader}>
+                  <View style={[styles.statusDotActive, { backgroundColor: getStatusColor() }]} />
+                  <Text style={styles.statusText}>Session: {getStatusText()}</Text>
+                </View>
 
-              <View style={styles.trackingRow}>
-                <MaterialIcons name="fact-check" size={20} color="#fbb115" />
-                <View style={styles.trackingDetails}>
-                  <Text style={styles.trackingLabel}>Total Work Time Today</Text>
-                  <Text style={styles.trackingValue}>
-                    {formatTime(elapsedMs + pastSessionsMs)}
+                <View style={styles.trackingInfo}>
+                  <View style={styles.trackingRow}>
+                    <MaterialIcons name="schedule" size={20} color="#fbb115" />
+                    <View style={styles.trackingDetails}>
+                      <Text style={styles.trackingLabel}>Active Session Time</Text>
+                      <Text style={styles.trackingValue}>
+                        {formatTime(elapsedMs)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.trackingRow}>
+                    <MaterialIcons name="fact-check" size={20} color="#fbb115" />
+                    <View style={styles.trackingDetails}>
+                      <Text style={styles.trackingLabel}>Total Work Time Today</Text>
+                      <Text style={styles.trackingValue}>
+                        {formatTime(elapsedMs + pastSessionsMs)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.trackingRow}>
+                    <MaterialIcons name="pin-drop" size={20} color="#fbb115" />
+                    <View style={styles.trackingDetails}>
+                      <Text style={styles.trackingLabel}>Locations Recorded</Text>
+                      <Text style={styles.trackingValue}>{locationCount} updates</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.gridContainer}>
+                <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/session')}>
+                  <MaterialIcons name="timer" size={40} color="#fbb115" />
+                  <Text style={styles.gridItemText}>Start/Close</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/visit')}>
+                  <MaterialIcons name="handshake" size={40} color="#fbb115" />
+                  <Text style={styles.gridItemText}>Log Visit</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/map')}>
+                  <MaterialIcons name="map" size={40} color="#fbb115" />
+                  <Text style={styles.gridItemText}>Leads Map</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.infoBox}>
+                <MaterialIcons name="info" size={24} color="#fbb115" />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>Welcome to V Trace</Text>
+                  <Text style={styles.infoText}>
+                    Use the start/close module to begin your day. Background locations will automatically track once active.
                   </Text>
                 </View>
               </View>
-
-              <View style={styles.trackingRow}>
-                <MaterialIcons name="pin-drop" size={20} color="#fbb115" />
-                <View style={styles.trackingDetails}>
-                  <Text style={styles.trackingLabel}>Locations Recorded</Text>
-                  <Text style={styles.trackingValue}>{locationCount} updates</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.gridContainer}>
-            <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/session')}>
-              <MaterialIcons name="timer" size={40} color="#fbb115" />
-              <Text style={styles.gridItemText}>Start/Close</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/visit')}>
-              <MaterialIcons name="handshake" size={40} color="#fbb115" />
-              <Text style={styles.gridItemText}>Log Visit</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.gridItem} onPress={() => router.push('/(tabs)/map')}>
-              <MaterialIcons name="map" size={40} color="#fbb115" />
-              <Text style={styles.gridItemText}>Leads Map</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.infoBox}>
-            <MaterialIcons name="info" size={24} color="#fbb115" />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Welcome to V Trace</Text>
-              <Text style={styles.infoText}>
-                Use the start/close module to begin your day. Background locations will automatically track once active.
-              </Text>
-            </View>
-          </View>
+            </>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -312,6 +353,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#000",
+  },
+  welcomeText: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 10,
+    lineHeight: 20,
   },
   gridContainer: {
     flexDirection: 'row',

@@ -1,4 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
+import { off, onValue } from 'firebase/database';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '../../components/SessionContext';
+import { db, ref } from '../../firebase';
 import {
     getTasksByEmployee,
     updateTaskStatus
@@ -43,6 +45,12 @@ interface EnquiryContact {
     isCompleted: boolean;
     completionDescription?: string;
     completedAt?: string;
+    callDuration?: number; // in seconds
+}
+
+interface CallTimer {
+    contactKey: string;
+    startTime: number;
 }
 
 export default function EnquiryScreen() {
@@ -54,30 +62,38 @@ export default function EnquiryScreen() {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [descriptions, setDescriptions] = useState<{ [key: string]: string }>({});
     const [submitting, setSubmitting] = useState<string | null>(null);
+    const [callDurations, setCallDurations] = useState<{ [key: string]: number }>({});
+    const [callStartTimes, setCallStartTimes] = useState<{ [key: string]: number }>({});
 
     useEffect(() => {
-        loadTasks();
-    }, []);
-
-    const loadTasks = async () => {
         if (!employee) return;
+
+        const tasksRef = ref(db, 'tasks');
         
-        try {
-            setLoading(true);
+        // Set up real-time listener
+        const unsubscribe = onValue(tasksRef, (snapshot) => {
+            if (!snapshot.exists()) {
+                setContacts([]);
+                setLoading(false);
+                return;
+            }
             
-            // Fetch all tasks assigned to this employee
-            const allTasks = await getTasksByEmployee(employee.employeeId);
-            
-            console.log('Total tasks fetched:', allTasks.length);
-            console.log('All tasks data:', JSON.stringify(allTasks, null, 2));
+            // Filter only enquiry tasks for this employee
+            const allTasks: Task[] = [];
+            snapshot.forEach((childSnapshot) => {
+                const data = childSnapshot.val();
+                if (data.assignedTo === employee.employeeId) {
+                    allTasks.push({
+                        id: childSnapshot.key,
+                        ...data,
+                    });
+                }
+            });
             
             // Filter only enquiry tasks
-            // If taskType is not set, show all tasks for office staff (backward compatibility)
             const enquiryTasks = allTasks.filter(task => 
                 task.taskType === 'enquiry' || !task.taskType
             );
-            
-            console.log('Enquiry tasks:', enquiryTasks.length);
             
             // Parse contact numbers from description and create individual enquiry items
             const contactItems: EnquiryContact[] = [];
@@ -95,15 +111,20 @@ export default function EnquiryScreen() {
                             .map(n => n.trim())
                             .filter(n => n.length > 0);
                         
-                        console.log('Parsed numbers from task', task.id, ':', numbers);
-                        
                         // Create separate enquiry for each number
                         numbers.forEach(number => {
                             const contactKey = `${task.id}_${number}`;
                             
                             // Check if this specific contact is completed
-                            // We'll store completion per contact in the task's contactCompletions field
-                            const contactCompletions = (task as any).contactCompletions || {};
+                            let contactCompletions: any = {};
+                            try {
+                                if (task.completionDescription && task.completionDescription.startsWith('{')) {
+                                    contactCompletions = JSON.parse(task.completionDescription);
+                                }
+                            } catch (e) {
+                                console.error('Error parsing contactCompletions:', e);
+                            }
+                            
                             const completion = contactCompletions[number];
                             
                             contactItems.push({
@@ -116,6 +137,7 @@ export default function EnquiryScreen() {
                                 isCompleted: !!completion,
                                 completionDescription: completion?.description,
                                 completedAt: completion?.completedAt,
+                                callDuration: completion?.callDuration,
                             });
                             
                             if (completion?.description) {
@@ -160,21 +182,67 @@ export default function EnquiryScreen() {
                 }
             });
             
-            console.log('Total contact items:', contactItems.length);
-            
             setContacts(contactItems);
             setDescriptions(descMap);
-        } catch (error) {
-            console.error('Error loading tasks:', error);
-            Alert.alert('Error', 'Failed to load enquiry tasks: ' + (error as Error).message);
-        } finally {
             setLoading(false);
+        }, (error) => {
+            console.error('Error listening to tasks:', error);
+            Alert.alert('Error', 'Failed to load enquiry tasks: ' + error.message);
+            setLoading(false);
+        });
+
+        // Cleanup listener on unmount
+        return () => off(tasksRef, 'value', unsubscribe);
+    }, [employee]);
+
+    const handleCall = async (phoneNumber: string, contactKey: string) => {
+        const cleanNumber = phoneNumber.replace(/[^0-9+]/g, '');
+        
+        // Check if there's already a call in progress for this contact
+        if (callStartTimes[contactKey]) {
+            // Call in progress, clicking again will end it
+            endCall(contactKey);
+            return;
+        }
+        
+        // Record call start time
+        setCallStartTimes(prev => ({
+            ...prev,
+            [contactKey]: Date.now(),
+        }));
+        
+        // Open phone dialer
+        Linking.openURL(`tel:${cleanNumber}`);
+    };
+
+    const endCall = (contactKey: string) => {
+        const startTime = callStartTimes[contactKey];
+        if (startTime) {
+            const duration = Math.floor((Date.now() - startTime) / 1000); // in seconds
+            
+            setCallDurations(prev => {
+                const updated = {
+                    ...prev,
+                    [contactKey]: (prev[contactKey] || 0) + duration,
+                };
+                return updated;
+            });
+            
+            // Automatically expand the card to show description box
+            setExpandedId(contactKey);
+            
+            Alert.alert(
+                'Call Duration Recorded',
+                `Duration: ${formatCallDuration(duration)}\n\nPlease enter completion details below.`,
+                [{ text: 'OK' }]
+            );
         }
     };
 
-    const handleCall = (phoneNumber: string) => {
-        const cleanNumber = phoneNumber.replace(/[^0-9+]/g, '');
-        Linking.openURL(`tel:${cleanNumber}`);
+    const formatCallDuration = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}m ${secs}s`;
     };
 
     const handleMarkCompleted = async (contact: EnquiryContact) => {
@@ -190,6 +258,8 @@ export default function EnquiryScreen() {
             return;
         }
 
+        const callDuration = callDurations[contactKey] || 0;
+
         try {
             setSubmitting(contactKey);
             
@@ -198,12 +268,26 @@ export default function EnquiryScreen() {
                 const allTasks = await getTasksByEmployee(employee.employeeId);
                 const task = allTasks.find(t => t.id === contact.taskId);
                 
-                if (!task) return;
+                if (!task) {
+                    return;
+                }
                 
-                const contactCompletions = (task as any).contactCompletions || {};
+                // Parse existing contactCompletions from completionDescription
+                let contactCompletions: any = {};
+                try {
+                    if (task.completionDescription && task.completionDescription.startsWith('{')) {
+                        contactCompletions = JSON.parse(task.completionDescription);
+                    }
+                } catch (e) {
+                    console.error('Error parsing existing contactCompletions:', e);
+                }
+                
                 contactCompletions[contact.contactNumber] = {
                     description,
                     completedAt: new Date().toISOString(),
+                    callDuration, // Store call duration in seconds
+                    completedBy: employee.employeeId,
+                    completedByName: employee.name,
                 };
                 
                 // Check if all contacts in this task are completed
@@ -215,20 +299,27 @@ export default function EnquiryScreen() {
                 const allCompleted = numbers.every(num => contactCompletions[num]);
                 
                 // Update task with contact completions
+                const jsonString = JSON.stringify(contactCompletions);
+                
                 await updateTaskStatus(
                     contact.taskId,
                     allCompleted ? 'completed' : 'pending',
-                    JSON.stringify(contactCompletions)
+                    jsonString
                 );
             } else {
                 // Regular task completion
                 await updateTaskStatus(contact.taskId, 'completed', description);
             }
 
-            Alert.alert('Success', 'Enquiry marked as completed');
+            Alert.alert('Success', `Enquiry marked as completed${callDuration > 0 ? `\nCall duration: ${formatCallDuration(callDuration)}` : ''}`);
             
-            // Reload tasks
-            await loadTasks();
+            // Clear call duration for this contact
+            setCallDurations(prev => {
+                const updated = { ...prev };
+                delete updated[contactKey];
+                return updated;
+            });
+            
             setExpandedId(null);
         } catch (error) {
             console.error('Error updating enquiry:', error);
@@ -335,10 +426,17 @@ export default function EnquiryScreen() {
                                         </View>
                                         {contact.contactNumber && (
                                             <TouchableOpacity
-                                                style={styles.callButton}
-                                                onPress={() => handleCall(contact.contactNumber)}
+                                                style={[
+                                                    styles.callButton,
+                                                    callStartTimes[contactKey] && styles.callButtonActive
+                                                ]}
+                                                onPress={() => handleCall(contact.contactNumber, contactKey)}
                                             >
-                                                <MaterialIcons name="call" size={24} color="#4CAF50" />
+                                                <MaterialIcons 
+                                                    name={callStartTimes[contactKey] ? "call-end" : "call"} 
+                                                    size={24} 
+                                                    color={callStartTimes[contactKey] ? "#f44336" : "#4CAF50"} 
+                                                />
                                             </TouchableOpacity>
                                         )}
                                         <MaterialIcons 
@@ -354,6 +452,15 @@ export default function EnquiryScreen() {
                                                 <View style={styles.taskDescriptionBox}>
                                                     <Text style={styles.taskDescriptionLabel}>Task Details:</Text>
                                                     <Text style={styles.taskDescriptionText}>{contact.taskDescription}</Text>
+                                                </View>
+                                            )}
+                                            
+                                            {callDurations[contactKey] > 0 && (
+                                                <View style={styles.callDurationBox}>
+                                                    <MaterialIcons name="timer" size={20} color="#4CAF50" />
+                                                    <Text style={styles.callDurationText}>
+                                                        Total Call Time: {formatCallDuration(callDurations[contactKey])}
+                                                    </Text>
                                                 </View>
                                             )}
                                             
@@ -437,7 +544,7 @@ export default function EnquiryScreen() {
                                         {contact.contactNumber && (
                                             <TouchableOpacity
                                                 style={styles.callButtonSmall}
-                                                onPress={() => handleCall(contact.contactNumber)}
+                                                onPress={() => handleCall(contact.contactNumber, `${contact.taskId}_${contact.contactNumber}`)}
                                             >
                                                 <MaterialIcons name="call" size={20} color="#4CAF50" />
                                             </TouchableOpacity>
@@ -455,6 +562,15 @@ export default function EnquiryScreen() {
                                         <View style={styles.completedDescription}>
                                             <Text style={styles.descriptionLabel}>Completion Notes:</Text>
                                             <Text style={styles.descriptionText}>{contact.completionDescription}</Text>
+                                        </View>
+                                    )}
+                                    
+                                    {contact.callDuration && contact.callDuration > 0 && (
+                                        <View style={styles.callDurationBox}>
+                                            <MaterialIcons name="timer" size={18} color="#4CAF50" />
+                                            <Text style={styles.callDurationText}>
+                                                Call Duration: {formatCallDuration(contact.callDuration)}
+                                            </Text>
                                         </View>
                                     )}
                                     
@@ -752,26 +868,25 @@ const styles = StyleSheet.create({
         padding: 8,
         marginRight: 8,
     },
+    callButtonActive: {
+        backgroundColor: '#ffebee',
+        borderRadius: 8,
+    },
     callButtonSmall: {
         padding: 6,
     },
-    descriptionLabel: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#666',
-        marginBottom: 4,
+    callDurationBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e8f5e9',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 15,
+        gap: 8,
     },
-    descriptionText: {
+    callDurationText: {
         fontSize: 14,
-        color: '#000',
-        lineHeight: 20,
-    },
-    completedDate: {
-        fontSize: 12,
-        color: '#999',
-    },
-});
-        fontSize: 12,
-        color: '#999',
+        fontWeight: '600',
+        color: '#4CAF50',
     },
 });

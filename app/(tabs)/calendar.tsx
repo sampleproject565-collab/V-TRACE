@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { off, onValue, ref } from 'firebase/database';
 import React, { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '../../components/SessionContext';
 import { db } from '../../firebase';
@@ -24,10 +24,23 @@ interface PastVisit {
     sessionId: string;
 }
 
+interface CompletedTask {
+    id: string;
+    title: string;
+    description?: string;
+    completionDescription?: string;
+    completedAt: string;
+    taskType?: 'field' | 'enquiry';
+    priority?: 'high' | 'medium' | 'low';
+    contactNumber?: string;
+    callDuration?: number;
+}
+
 interface DailySummary {
     dateStr: string;
     sessions: PastSession[];
     visits: PastVisit[];
+    tasks: CompletedTask[];
     totalWorkMs: number;
     totalBreakMs: number;
 }
@@ -38,15 +51,94 @@ export default function CalendarScreen() {
     const [loading, setLoading] = useState(true);
     const [history, setHistory] = useState<DailySummary[]>([]);
     const [refreshing, setRefreshing] = useState(false);
+    const [expandedTask, setExpandedTask] = useState<string | null>(null);
+    const isOfficeStaff = employee?.role === 'office_staff';
 
     const fetchData = async () => {
         if (!employee) return;
         setLoading(true);
 
         try {
-            // Real-time listener for sessions
-            const sessionsRef = ref(db, 'sessions');
-            const visitsRef = ref(db, 'visits');
+            if (isOfficeStaff) {
+                // For office staff, show completed tasks
+                const tasksRef = ref(db, 'tasks');
+                
+                onValue(tasksRef, (tasksSnap) => {
+                    const completedTasks: CompletedTask[] = [];
+                    
+                    if (tasksSnap.exists()) {
+                        tasksSnap.forEach((childSnapshot) => {
+                            const data = childSnapshot.val();
+                            if (data.assignedTo === employee.employeeId && data.status === 'completed') {
+                                // Check if it's an enquiry task with multiple contacts
+                                if (data.taskType === 'enquiry' && data.completionDescription && data.completionDescription.startsWith('{')) {
+                                    try {
+                                        const contactCompletions = JSON.parse(data.completionDescription);
+                                        // Create separate task entry for each completed contact
+                                        Object.keys(contactCompletions).forEach(contactNumber => {
+                                            const completion = contactCompletions[contactNumber];
+                                            completedTasks.push({
+                                                id: `${childSnapshot.key}_${contactNumber}`,
+                                                title: data.title,
+                                                description: data.description,
+                                                completionDescription: completion.description,
+                                                completedAt: completion.completedAt,
+                                                taskType: data.taskType,
+                                                priority: data.priority,
+                                                contactNumber: contactNumber,
+                                                callDuration: completion.callDuration,
+                                            });
+                                        });
+                                    } catch (e) {
+                                        console.error('Error parsing contact completions:', e);
+                                    }
+                                } else {
+                                    // Regular completed task
+                                    completedTasks.push({
+                                        id: childSnapshot.key || '',
+                                        title: data.title,
+                                        description: data.description,
+                                        completionDescription: data.completionDescription,
+                                        completedAt: data.completedAt,
+                                        taskType: data.taskType,
+                                        priority: data.priority,
+                                    });
+                                }
+                            }
+                        });
+                    }
+
+                    completedTasks.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+                    // Group by Date String
+                    const grouped = new Map<string, DailySummary>();
+
+                    completedTasks.forEach(task => {
+                        const dateObj = new Date(task.completedAt);
+                        const dStr = dateObj.toISOString().split('T')[0];
+                        if (!grouped.has(dStr)) {
+                            grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], tasks: [], totalWorkMs: 0, totalBreakMs: 0 });
+                        }
+                        const summary = grouped.get(dStr)!;
+                        summary.tasks.push(task);
+                    });
+
+                    const result = Array.from(grouped.values()).sort((a, b) => {
+                        return new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime();
+                    });
+
+                    setHistory(result);
+                    setLoading(false);
+                    setRefreshing(false);
+                }, (error) => {
+                    console.error('Error fetching tasks', error);
+                    setLoading(false);
+                    setRefreshing(false);
+                });
+            } else {
+                // For field staff, show sessions and visits
+                const sessionsRef = ref(db, 'sessions');
+                const visitsRef = ref(db, 'visits');
 
             const sessionsUnsubscribe = onValue(sessionsRef, (sessionsSnap) => {
                 const sessions: PastSession[] = [];
@@ -98,7 +190,7 @@ export default function CalendarScreen() {
                         const dateObj = new Date(s.startTime);
                         const dStr = dateObj.toISOString().split('T')[0]; // Use YYYY-MM-DD format
                         if (!grouped.has(dStr)) {
-                            grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], totalWorkMs: 0, totalBreakMs: 0 });
+                            grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], tasks: [], totalWorkMs: 0, totalBreakMs: 0 });
                         }
                         const summary = grouped.get(dStr)!;
                         summary.sessions.push(s);
@@ -110,7 +202,7 @@ export default function CalendarScreen() {
                         const dateObj = new Date(v.timestamp);
                         const dStr = dateObj.toISOString().split('T')[0]; // Use YYYY-MM-DD format
                         if (!grouped.has(dStr)) {
-                            grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], totalWorkMs: 0, totalBreakMs: 0 });
+                            grouped.set(dStr, { dateStr: dStr, sessions: [], visits: [], tasks: [], totalWorkMs: 0, totalBreakMs: 0 });
                         }
                         const summary = grouped.get(dStr)!;
                         summary.visits.push(v);
@@ -135,7 +227,7 @@ export default function CalendarScreen() {
                 setLoading(false);
                 setRefreshing(false);
             });
-
+            }
         } catch (error) {
             console.error('Error fetching calendar data', error);
             setLoading(false);
@@ -150,18 +242,33 @@ export default function CalendarScreen() {
 
         // Cleanup listeners on unmount
         return () => {
-            const sessionsRef = ref(db, 'sessions');
-            const visitsRef = ref(db, 'visits');
-            off(sessionsRef);
-            off(visitsRef);
+            if (isOfficeStaff) {
+                const tasksRef = ref(db, 'tasks');
+                off(tasksRef);
+            } else {
+                const sessionsRef = ref(db, 'sessions');
+                const visitsRef = ref(db, 'visits');
+                off(sessionsRef);
+                off(visitsRef);
+            }
         };
-    }, [employee]);
+    }, [employee, isOfficeStaff]);
 
     const formatDuration = (ms: number) => {
         const totalMinutes = Math.floor(ms / (1000 * 60));
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
         return `${hours}h ${minutes}m`;
+    };
+
+    const formatCallDuration = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}m ${secs}s`;
+    };
+
+    const toggleTaskExpand = (taskId: string) => {
+        setExpandedTask(expandedTask === taskId ? null : taskId);
     };
 
     const onRefresh = () => {
@@ -201,20 +308,41 @@ export default function CalendarScreen() {
                             <Text style={styles.summaryValue}>{history.length}</Text>
                             <Text style={styles.summaryLabel}>Days Tracked</Text>
                         </View>
-                        <View style={styles.summaryItem}>
-                            <MaterialIcons name="work" size={24} color="#4ade80" />
-                            <Text style={styles.summaryValue}>
-                                {history.reduce((sum, day) => sum + day.sessions.length, 0)}
-                            </Text>
-                            <Text style={styles.summaryLabel}>Total Sessions</Text>
-                        </View>
-                        <View style={styles.summaryItem}>
-                            <MaterialIcons name="handshake" size={24} color="#3b82f6" />
-                            <Text style={styles.summaryValue}>
-                                {history.reduce((sum, day) => sum + day.visits.length, 0)}
-                            </Text>
-                            <Text style={styles.summaryLabel}>Total Visits</Text>
-                        </View>
+                        {isOfficeStaff ? (
+                            <>
+                                <View style={styles.summaryItem}>
+                                    <MaterialIcons name="assignment-turned-in" size={24} color="#4ade80" />
+                                    <Text style={styles.summaryValue}>
+                                        {history.reduce((sum, day) => sum + (day.tasks?.length || 0), 0)}
+                                    </Text>
+                                    <Text style={styles.summaryLabel}>Completed Tasks</Text>
+                                </View>
+                                <View style={styles.summaryItem}>
+                                    <MaterialIcons name="phone" size={24} color="#3b82f6" />
+                                    <Text style={styles.summaryValue}>
+                                        {history.reduce((sum, day) => sum + (day.tasks?.filter(t => t.taskType === 'enquiry').length || 0), 0)}
+                                    </Text>
+                                    <Text style={styles.summaryLabel}>Enquiries</Text>
+                                </View>
+                            </>
+                        ) : (
+                            <>
+                                <View style={styles.summaryItem}>
+                                    <MaterialIcons name="work" size={24} color="#4ade80" />
+                                    <Text style={styles.summaryValue}>
+                                        {history.reduce((sum, day) => sum + day.sessions.length, 0)}
+                                    </Text>
+                                    <Text style={styles.summaryLabel}>Total Sessions</Text>
+                                </View>
+                                <View style={styles.summaryItem}>
+                                    <MaterialIcons name="handshake" size={24} color="#3b82f6" />
+                                    <Text style={styles.summaryValue}>
+                                        {history.reduce((sum, day) => sum + day.visits.length, 0)}
+                                    </Text>
+                                    <Text style={styles.summaryLabel}>Total Visits</Text>
+                                </View>
+                            </>
+                        )}
                     </View>
                 </View>
             )}
@@ -238,20 +366,121 @@ export default function CalendarScreen() {
                             </Text>
                         </View>
 
-                        <View style={styles.metricsRow}>
-                            <View style={styles.metricBox}>
-                                <Text style={styles.metricValue}>{formatDuration(day.totalWorkMs)}</Text>
-                                <Text style={styles.metricLabel}>Work</Text>
-                            </View>
-                            <View style={styles.metricBox}>
-                                <Text style={styles.metricValue}>{formatDuration(day.totalBreakMs)}</Text>
-                                <Text style={styles.metricLabel}>Break</Text>
-                            </View>
-                            <View style={styles.metricBox}>
-                                <Text style={styles.metricValue}>{day.visits.length}</Text>
-                                <Text style={styles.metricLabel}>Visits</Text>
-                            </View>
-                        </View>
+                        {isOfficeStaff ? (
+                            <>
+                                <View style={styles.metricsRow}>
+                                    <View style={styles.metricBox}>
+                                        <Text style={styles.metricValue}>{day.tasks?.length || 0}</Text>
+                                        <Text style={styles.metricLabel}>Tasks</Text>
+                                    </View>
+                                    <View style={styles.metricBox}>
+                                        <Text style={styles.metricValue}>{day.tasks?.filter(t => t.taskType === 'enquiry').length || 0}</Text>
+                                        <Text style={styles.metricLabel}>Enquiries</Text>
+                                    </View>
+                                    <View style={styles.metricBox}>
+                                        <Text style={styles.metricValue}>{day.tasks?.filter(t => t.callDuration && t.callDuration > 0).length || 0}</Text>
+                                        <Text style={styles.metricLabel}>Calls Made</Text>
+                                    </View>
+                                </View>
+
+                                {day.tasks && day.tasks.length > 0 && (
+                                    <View style={styles.listSection}>
+                                        <Text style={styles.listHeader}>Completed Tasks</Text>
+                                        {day.tasks.map((task, idx) => {
+                                            const isExpanded = expandedTask === task.id;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={idx}
+                                                    style={styles.taskCard}
+                                                    onPress={() => toggleTaskExpand(task.id)}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <View style={styles.taskHeader}>
+                                                        <View style={styles.taskIconContainer}>
+                                                            <MaterialIcons 
+                                                                name={task.taskType === 'enquiry' ? "phone" : "assignment"} 
+                                                                size={20} 
+                                                                color="#4CAF50" 
+                                                            />
+                                                        </View>
+                                                        <View style={styles.taskInfo}>
+                                                            {task.contactNumber ? (
+                                                                <>
+                                                                    <Text style={styles.taskTitle}>{task.contactNumber}</Text>
+                                                                    <Text style={styles.taskSubtitle}>{task.title}</Text>
+                                                                </>
+                                                            ) : (
+                                                                <Text style={styles.taskTitle}>{task.title}</Text>
+                                                            )}
+                                                            <Text style={styles.taskTime}>
+                                                                {new Date(task.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </Text>
+                                                            {task.priority && (
+                                                                <View style={[
+                                                                    styles.priorityBadge,
+                                                                    task.priority === 'high' && styles.priorityHigh,
+                                                                    task.priority === 'medium' && styles.priorityMedium,
+                                                                    task.priority === 'low' && styles.priorityLow,
+                                                                ]}>
+                                                                    <Text style={styles.priorityText}>{task.priority.toUpperCase()}</Text>
+                                                                </View>
+                                                            )}
+                                                        </View>
+                                                        <MaterialIcons 
+                                                            name={isExpanded ? "expand-less" : "expand-more"} 
+                                                            size={24} 
+                                                            color="#666" 
+                                                        />
+                                                    </View>
+
+                                                    {isExpanded && (
+                                                        <View style={styles.taskDetails}>
+                                                            {task.completionDescription && (
+                                                                <View style={styles.completionBox}>
+                                                                    <Text style={styles.completionLabel}>Completion Notes:</Text>
+                                                                    <Text style={styles.completionText}>{task.completionDescription}</Text>
+                                                                </View>
+                                                            )}
+                                                            
+                                                            {task.callDuration && task.callDuration > 0 && (
+                                                                <View style={styles.callDurationBox}>
+                                                                    <MaterialIcons name="timer" size={18} color="#4CAF50" />
+                                                                    <Text style={styles.callDurationText}>
+                                                                        Call Duration: {formatCallDuration(task.callDuration)}
+                                                                    </Text>
+                                                                </View>
+                                                            )}
+                                                            
+                                                            <View style={styles.timestampBox}>
+                                                                <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                                                                <Text style={styles.timestampText}>
+                                                                    Completed at {new Date(task.completedAt).toLocaleString()}
+                                                                </Text>
+                                                            </View>
+                                                        </View>
+                                                    )}
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <View style={styles.metricsRow}>
+                                    <View style={styles.metricBox}>
+                                        <Text style={styles.metricValue}>{formatDuration(day.totalWorkMs)}</Text>
+                                        <Text style={styles.metricLabel}>Work</Text>
+                                    </View>
+                                    <View style={styles.metricBox}>
+                                        <Text style={styles.metricValue}>{formatDuration(day.totalBreakMs)}</Text>
+                                        <Text style={styles.metricLabel}>Break</Text>
+                                    </View>
+                                    <View style={styles.metricBox}>
+                                        <Text style={styles.metricValue}>{day.visits.length}</Text>
+                                        <Text style={styles.metricLabel}>Visits</Text>
+                                    </View>
+                                </View>
 
                         {day.sessions.length > 0 && (
                             <View style={styles.listSection}>
@@ -316,6 +545,8 @@ export default function CalendarScreen() {
                                     </View>
                                 ))}
                             </View>
+                        )}
+                            </>
                         )}
                     </View>
                 ))
@@ -528,5 +759,114 @@ const styles = StyleSheet.create({
     },
     breakTime: {
         color: '#fbb115',
+    },
+    taskCard: {
+        backgroundColor: '#f9f9f9',
+        borderRadius: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#e5e5e5',
+        overflow: 'hidden',
+    },
+    taskHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 15,
+    },
+    taskIconContainer: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#e8f5e9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    taskInfo: {
+        flex: 1,
+    },
+    taskTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#000',
+    },
+    taskSubtitle: {
+        fontSize: 13,
+        color: '#666',
+        marginTop: 2,
+    },
+    taskTime: {
+        fontSize: 12,
+        color: '#999',
+        marginTop: 4,
+    },
+    priorityBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 4,
+        marginTop: 6,
+        alignSelf: 'flex-start',
+    },
+    priorityHigh: {
+        backgroundColor: '#ffebee',
+    },
+    priorityMedium: {
+        backgroundColor: '#fff3e0',
+    },
+    priorityLow: {
+        backgroundColor: '#e8f5e9',
+    },
+    priorityText: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: '#666',
+    },
+    taskDetails: {
+        padding: 15,
+        paddingTop: 0,
+        borderTopWidth: 1,
+        borderTopColor: '#e5e5e5',
+    },
+    completionBox: {
+        backgroundColor: '#fff',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#e5e5e5',
+    },
+    completionLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#666',
+        marginBottom: 6,
+    },
+    completionText: {
+        fontSize: 14,
+        color: '#000',
+        lineHeight: 20,
+    },
+    callDurationBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e8f5e9',
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 10,
+        gap: 6,
+    },
+    callDurationText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#4CAF50',
+    },
+    timestampBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    timestampText: {
+        fontSize: 12,
+        color: '#999',
     }
 });

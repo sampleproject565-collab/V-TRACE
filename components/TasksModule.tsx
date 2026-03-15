@@ -45,7 +45,7 @@ export default function TasksModule() {
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [reasonModalVisible, setReasonModalVisible] = useState(false);
     const [reason, setReason] = useState('');
-    const [actionType, setActionType] = useState<'rejected' | 'not_completed' | null>(null);
+    const [actionType, setActionType] = useState<'rejected' | 'not_completed' | 'completed' | null>(null);
 
     useEffect(() => {
         if (!employee) return;
@@ -111,46 +111,27 @@ export default function TasksModule() {
     };
 
     const handleComplete = async (task: Task) => {
-        Alert.alert(
-            'Mark as Completed',
-            `Mark "${task.title}" as completed?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Completed',
-                    onPress: async () => {
-                        try {
-                            await updateTaskStatus(task.id, 'completed');
-                            Alert.alert('Success', 'Task marked as completed!');
-                        } catch (error) {
-                            Alert.alert('Error', 'Could not update task.');
-                        }
-                    }
-                },
-                {
-                    text: 'Not Completed',
-                    style: 'destructive',
-                    onPress: () => {
-                        setSelectedTask(task);
-                        setActionType('not_completed');
-                        setReasonModalVisible(true);
-                    }
-                }
-            ]
-        );
+        setSelectedTask(task);
+        setActionType('completed');
+        setReasonModalVisible(true);
     };
 
     const submitReason = async () => {
         if (!selectedTask || !actionType) return;
 
         if (!reason.trim()) {
-            Alert.alert('Required', 'Please enter a reason.');
+            Alert.alert('Required', 'Please enter a description.');
             return;
         }
 
         try {
             await updateTaskStatus(selectedTask.id, actionType, reason.trim());
-            Alert.alert('Success', `Task ${actionType === 'rejected' ? 'rejected' : 'marked as not completed'} successfully!`);
+            const message = actionType === 'rejected' 
+                ? 'rejected' 
+                : actionType === 'not_completed' 
+                ? 'marked as not completed' 
+                : 'completed';
+            Alert.alert('Success', `Task ${message} successfully!`);
             setReasonModalVisible(false);
             setReason('');
             setSelectedTask(null);
@@ -379,15 +360,23 @@ export default function TasksModule() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>
-                            {actionType === 'rejected' ? 'Rejection Reason' : 'Why Not Completed?'}
+                            {actionType === 'rejected' 
+                                ? 'Rejection Reason' 
+                                : actionType === 'not_completed' 
+                                ? 'Why Not Completed?' 
+                                : 'Task Completion Details'}
                         </Text>
                         <Text style={styles.modalSubtitle}>
-                            Please provide a reason for {actionType === 'rejected' ? 'rejecting' : 'not completing'} this task
+                            {actionType === 'rejected' 
+                                ? 'Please provide a reason for rejecting this task' 
+                                : actionType === 'not_completed' 
+                                ? 'Please provide a reason for not completing this task' 
+                                : 'Describe what you did to complete this task'}
                         </Text>
 
                         <TextInput
                             style={styles.reasonInput}
-                            placeholder="Enter reason..."
+                            placeholder={actionType === 'completed' ? 'Enter completion details...' : 'Enter reason...'}
                             value={reason}
                             onChangeText={setReason}
                             multiline
@@ -407,11 +396,26 @@ export default function TasksModule() {
                             >
                                 <Text style={styles.cancelButtonText}>Cancel</Text>
                             </TouchableOpacity>
+                            
+                            {actionType === 'completed' && (
+                                <TouchableOpacity
+                                    style={[styles.modalButton, styles.notCompletedButton]}
+                                    onPress={() => {
+                                        setActionType('not_completed');
+                                        setReason('');
+                                    }}
+                                >
+                                    <Text style={styles.notCompletedButtonText}>Not Completed</Text>
+                                </TouchableOpacity>
+                            )}
+                            
                             <TouchableOpacity
                                 style={[styles.modalButton, styles.submitButton]}
                                 onPress={submitReason}
                             >
-                                <Text style={styles.submitButtonText}>Submit</Text>
+                                <Text style={styles.submitButtonText}>
+                                    {actionType === 'completed' ? 'Complete' : 'Submit'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -660,12 +664,20 @@ const styles = StyleSheet.create({
     submitButton: {
         backgroundColor: '#2196F3',
     },
+    notCompletedButton: {
+        backgroundColor: '#f44336',
+    },
     cancelButtonText: {
         fontSize: 16,
         fontWeight: 'bold',
         color: '#666',
     },
     submitButtonText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#fff',
+    },
+    notCompletedButtonText: {
         fontSize: 16,
         fontWeight: 'bold',
         color: '#fff',
