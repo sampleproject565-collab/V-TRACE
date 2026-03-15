@@ -1,0 +1,363 @@
+================================================================================
+                    OFFICE STAFF PAGES - DOCUMENTATION
+================================================================================
+
+OVERVIEW:
+This document describes all the pages and features available for Office Staff
+in the Employee Tracking Application.
+
+================================================================================
+                            1. DASHBOARD PAGE
+================================================================================
+File: app/(tabs)/index.tsx
+Route: /(tabs)/
+
+DESCRIPTION:
+The main landing page for office staff after login. Shows a simplified 
+dashboard with quick access to key features.
+
+FEATURES:
+- Welcome message with employee name
+- Two main action buttons:
+  1. Enquiries Button - Navigate to enquiry tasks
+  2. History Button - View completed tasks and call history
+
+DIFFERENCES FROM FIELD STAFF:
+- NO session tracking (Start/Close Session buttons)
+- NO location tracking features
+- NO "Log Visit" button
+- NO "Leads Map" button
+- Clean, focused interface for office work
+
+USER FLOW:
+1. Office staff logs in
+2. Sees dashboard with their name
+3. Can click "Enquiries" to handle customer calls
+4. Can click "History" to view past completed tasks
+
+================================================================================
+                          2. ENQUIRY TASKS PAGE
+================================================================================
+File: app/(tabs)/enquiry.tsx
+Route: /(tabs)/enquiry
+
+DESCRIPTION:
+Main working page for office staff to handle customer enquiries via phone calls.
+Tracks call duration and completion details.
+
+
+FEATURES:
+
+A. PENDING ENQUIRIES SECTION:
+   - Shows all assigned enquiry tasks
+   - Each task displays:
+     * Contact number (if enquiry task)
+     * Task title
+     * Due date
+     * Priority badge (High/Medium/Low)
+   
+B. CALL TRACKING:
+   - Green call icon button to initiate call
+   - Click call button → Opens phone dialer
+   - Timer starts automatically
+   - Call icon turns RED when call is active
+   - Click RED button to end call and record duration
+   - Duration is saved in seconds
+
+C. TASK COMPLETION:
+   - After ending call, card auto-expands
+   - Shows total call time accumulated
+   - Completion description field (REQUIRED)
+   - "Mark as Completed" button
+   - Saves: description, call duration, timestamp
+
+D. COMPLETED ENQUIRIES SECTION:
+   - Shows all completed tasks
+   - Displays:
+     * Contact number and task title
+     * Completion notes
+     * Call duration (if call was made)
+     * Completion timestamp
+   - Can still call the number if needed
+
+E. REAL-TIME UPDATES:
+   - Tasks appear instantly when admin assigns them
+   - No refresh needed
+   - Tasks disappear when removed by admin
+   - Status changes sync across all devices
+
+
+USER FLOW - HANDLING AN ENQUIRY:
+1. Office staff opens Enquiry page
+2. Sees pending enquiry with contact number
+3. Clicks green CALL button
+4. Phone dialer opens with number
+5. Makes the call (timer running in background)
+6. After call ends, clicks RED "End Call" button
+7. Card expands showing call duration
+8. Enters completion notes in description field
+9. Clicks "Mark as Completed"
+10. Task moves to Completed section
+
+MULTIPLE CONTACTS:
+- If admin assigns task with comma-separated numbers (e.g., "9876543210, 9123456789")
+- Each number appears as separate enquiry card
+- Can call and complete each independently
+- Each contact tracks its own call duration
+
+DATA STORED IN FIREBASE:
+- Task ID
+- Contact number
+- Completion description
+- Call duration (in seconds)
+- Completed timestamp
+- Completed by (employee ID and name)
+
+================================================================================
+                          3. HISTORY PAGE
+================================================================================
+File: app/(tabs)/calendar.tsx
+Route: /(tabs)/calendar
+
+DESCRIPTION:
+Shows complete history of all completed tasks for office staff, organized by date.
+
+FEATURES:
+
+A. OVERALL SUMMARY CARD:
+   - Days Tracked: Total number of days with completed tasks
+   - Completed Tasks: Total count of all completed tasks
+   - Enquiries: Count of enquiry-type tasks
+
+
+B. DAILY BREAKDOWN:
+   - Tasks grouped by completion date
+   - Shows date in full format (e.g., "Monday, March 15, 2026")
+   - Daily metrics:
+     * Total tasks completed that day
+     * Number of enquiries
+     * Number of calls made
+
+C. TASK CARDS (EXPANDABLE):
+   - Click any task to expand and see details
+   - Shows:
+     * Contact number (for enquiry tasks)
+     * Task title
+     * Completion time
+     * Priority badge
+   
+   When expanded:
+     * Completion notes/description
+     * Call duration (if call was made)
+     * Full completion timestamp
+
+D. REAL-TIME UPDATES:
+   - Automatically updates when tasks are completed
+   - Pull-to-refresh to manually refresh data
+   - No page reload needed
+
+USER FLOW:
+1. Office staff clicks "History" from dashboard
+2. Sees summary of all completed work
+3. Scrolls through days to find specific tasks
+4. Clicks on any task to see full details
+5. Can review completion notes and call durations
+
+DIFFERENCES FROM FIELD STAFF HISTORY:
+- Field staff see: Sessions, Work time, Break time, Site visits
+- Office staff see: Completed tasks, Enquiries, Call durations
+
+================================================================================
+                          4. PROFILE PAGE
+================================================================================
+File: app/(tabs)/profile.tsx
+Route: /(tabs)/profile
+
+DESCRIPTION:
+Employee profile and account management page.
+
+
+FEATURES:
+- Display employee information:
+  * Name
+  * Employee ID
+  * Role (Office Staff)
+  * Phone number
+  * Email
+- Logout button
+
+USER FLOW:
+1. Click profile tab
+2. View personal information
+3. Click logout to sign out
+
+================================================================================
+                        5. TASKS PAGE (OPTIONAL)
+================================================================================
+File: components/TasksModule.tsx
+Route: Accessible from various pages
+
+DESCRIPTION:
+General task management page (if office staff are assigned non-enquiry tasks).
+
+FEATURES:
+- View all assigned tasks (field tasks, general tasks)
+- Accept or reject tasks
+- Mark tasks as completed with description
+- Mark tasks as not completed with reason
+
+NOTE: Most office staff work is done through the Enquiry page, but this
+provides flexibility for other task types.
+
+================================================================================
+                          KEY DIFFERENCES SUMMARY
+================================================================================
+
+OFFICE STAFF HAVE:
+✓ Dashboard with Enquiries and History buttons
+✓ Enquiry page with call tracking
+✓ History page showing completed tasks
+✓ Profile page
+✓ Call duration tracking
+✓ Task completion with descriptions
+
+OFFICE STAFF DO NOT HAVE:
+✗ Session tracking (Start/Close Session)
+✗ Location tracking
+✗ Map view
+✗ Log Visit feature
+✗ Break time tracking
+✗ Travel expense tracking
+✗ Field measurements
+
+
+================================================================================
+                        DATABASE STRUCTURE
+================================================================================
+
+TASKS COLLECTION:
+tasks/
+  {taskId}/
+    - title: string
+    - description: string (can be comma-separated phone numbers)
+    - assignedTo: string (employee ID)
+    - assignedBy: string (admin ID)
+    - status: 'pending' | 'completed' | 'accepted' | 'rejected' | 'not_completed'
+    - taskType: 'enquiry' | 'field'
+    - priority: 'high' | 'medium' | 'low'
+    - createdAt: timestamp
+    - dueDate: timestamp
+    - completionDescription: string or JSON string
+    - completedAt: timestamp
+
+FOR ENQUIRY TASKS WITH MULTIPLE CONTACTS:
+completionDescription stores JSON:
+{
+  "9876543210": {
+    "description": "Customer interested in product",
+    "completedAt": "2026-03-15T10:30:00.000Z",
+    "callDuration": 180,
+    "completedBy": "EMP001",
+    "completedByName": "John Doe"
+  },
+  "9123456789": {
+    "description": "Follow-up scheduled",
+    "completedAt": "2026-03-15T11:00:00.000Z",
+    "callDuration": 120,
+    "completedBy": "EMP001",
+    "completedByName": "John Doe"
+  }
+}
+
+================================================================================
+                        TECHNICAL IMPLEMENTATION
+================================================================================
+
+STATE MANAGEMENT:
+- Uses React hooks (useState, useEffect)
+- Real-time Firebase listeners (onValue)
+- Session context for employee data
+
+KEY FUNCTIONS:
+
+1. handleCall(phoneNumber, contactKey)
+   - Opens phone dialer
+   - Starts call timer
+   - Changes call button to red
+
+2. endCall(contactKey)
+   - Calculates call duration
+   - Saves duration to state
+   - Auto-expands card
+   - Shows alert with duration
+
+3. handleMarkCompleted(contact)
+   - Validates description is entered
+   - Saves completion data to Firebase
+   - Updates task status
+   - Clears call duration from state
+
+
+4. Real-time listener setup
+   - Listens to tasks collection
+   - Filters by employee ID
+   - Parses contact completions
+   - Updates UI automatically
+
+FIREBASE HELPERS USED:
+- getTasksByEmployee(employeeId)
+- updateTaskStatus(taskId, status, description)
+
+================================================================================
+                        ADMIN WORKFLOW
+================================================================================
+
+HOW ADMIN ASSIGNS ENQUIRY TASKS:
+
+1. Admin creates new task
+2. Sets taskType = 'enquiry'
+3. In description field, enters:
+   - Single number: "9876543210"
+   - Multiple numbers: "9876543210, 9123456789, 9345678901"
+4. Assigns to office staff employee
+5. Sets priority and due date
+6. Task appears instantly on office staff's Enquiry page
+
+TASK APPEARS AS:
+- Single number: One enquiry card
+- Multiple numbers: Separate card for each number
+
+================================================================================
+                        TROUBLESHOOTING
+================================================================================
+
+ISSUE: Call duration shows 0
+SOLUTION: Make sure to click the RED "End Call" button before marking as completed
+
+ISSUE: Tasks not appearing
+SOLUTION: Check that taskType is set to 'enquiry' or left empty
+
+ISSUE: Can't mark as completed
+SOLUTION: Completion description is required - enter notes before submitting
+
+ISSUE: Multiple contacts not showing separately
+SOLUTION: Ensure numbers are comma-separated in task description
+
+ISSUE: Real-time updates not working
+SOLUTION: Check Firebase connection and employee ID matching
+
+================================================================================
+                        FUTURE ENHANCEMENTS
+================================================================================
+
+POTENTIAL FEATURES:
+- SMS integration for sending messages
+- Call recording integration
+- Customer database linking
+- Follow-up reminders
+- Call analytics and reports
+- Export call history to Excel
+- Search and filter completed tasks
+- Notes/comments on tasks
+- Task priority sorting
+
